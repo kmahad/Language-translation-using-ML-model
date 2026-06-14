@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transformer NMT Dashboard</title>
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Premium Vanilla CSS Stylesheet -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+    
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        
+        <!-- SIDEBAR NAVIGATION -->
+        <aside class="app-sidebar">
+            <div class="sidebar-header">
+                <div class="logo-icon">
+                    <i data-lucide="languages"></i>
+                </div>
+                <div class="logo-text">
+                    <h1>Antigravity</h1>
+                    <span>NMT Translator</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="#dashboard" class="nav-item active" data-tab="dashboard">
+                    <i data-lucide="layout-dashboard"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#dataset" class="nav-item" data-tab="dataset">
+                    <i data-lucide="database"></i>
+                    <span>Dataset Explorer</span>
+                </a>
+                <a href="#prep" class="nav-item" data-tab="prep">
+                    <i data-lucide="cpu"></i>
+                    <span>Data Prep</span>
+                </a>
+                <a href="#training" class="nav-item" data-tab="training">
+                    <i data-lucide="activity"></i>
+                    <span>Model Training</span>
+                </a>
+                <a href="#evaluation" class="nav-item" data-tab="evaluation">
+                    <i data-lucide="gauge"></i>
+                    <span>Evaluation</span>
+                </a>
+                <a href="#translate" class="nav-item" data-tab="translate">
+                    <i data-lucide="arrow-left-right"></i>
+                    <span>Interactive Translate</span>
+                </a>
+                <a href="#docs" class="nav-item" data-tab="docs">
+                    <i data-lucide="book-open"></i>
+                    <span>Documentation</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="device-badge">
+                    <div class="status-indicator online"></div>
+                    <div class="device-details">
+                        <span class="device-label">Active Device</span>
+                        <span class="device-val" id="active-device-name">Detecting...</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- MAIN CONTENT AREA -->
+        <main class="app-main">
+            
+            <!-- HEADER -->
+            <header class="app-header">
+                <div class="header-title-area">
+                    <h2 id="current-tab-title">Translator</h2>
+                    <p id="current-tab-subtitle">NMT Translator model interface.</p>
+                </div>
+                <div class="header-status-area">
+                    <div class="system-status-indicator" id="system-status-indicator">
+                        <span class="status-dot green"></span>
+                        <span class="status-text">System Ready</span>
+                    </div>
+                    <button class="btn btn-secondary" id="btn-admin-toggle" style="margin-left: 12px; font-weight: 600;">
+                        <i data-lucide="settings"></i> Admin Console
+                    </button>
+                </div>
+            </header>
+            
+            <!-- CONTAINER FOR TABS -->
+            <div class="content-container">
+                
+                <!-- TAB: DASHBOARD -->
+                <section id="tab-dashboard" class="tab-pane active">
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="metric-title">Dataset Status</span>
+                                <div class="metric-icon blue"><i data-lucide="file-spreadsheet"></i></div>
+                            </div>
+                            <div class="metric-value" id="dash-metric-dataset">Checking...</div>
+                            <div class="metric-footer" id="dash-metric-dataset-path">---</div>
+                        </div>
+                        
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="metric-title">Tokenizer State</span>
+                                <div class="metric-icon purple"><i data-lucide="binary"></i></div>
+                            </div>
+                            <div class="metric-value" id="dash-metric-tokenizer">Checking...</div>
+                            <div class="metric-footer" id="dash-metric-tokenizer-vocab">Vocab Size: ---</div>
+                        </div>
+                        
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="metric-title">Model Weights</span>
+                                <div class="metric-icon green"><i data-lucide="weight"></i></div>
+                            </div>
+                            <div class="metric-value" id="dash-metric-weights">Checking...</div>
+                            <div class="metric-footer" id="dash-metric-weights-loss">Best Val Loss: ---</div>
+                        </div>
+                        
+                        <div class="metric-card">
+                            <div class="metric-header">
+                                <span class="metric-title">System Status</span>
+                                <div class="metric-icon orange"><i data-lucide="server"></i></div>
+                            </div>
+                            <div class="metric-value" id="dash-metric-status">Idle</div>
+                            <div class="metric-footer" id="dash-metric-active-task">No active tasks</div>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-details-row">
+                        <div class="dashboard-card model-overview-card">
+                            <div class="card-header">
+                                <h3><i data-lucide="cog"></i> Active Model Configuration</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="config-table-container">
+                                    <table class="config-table">
+                                        <tbody>
+                                            <tr>
+                                                <td>Source Language</td>
+                                                <td id="conf-src-lang" class="highlight">--</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Target Language</td>
+                                                <td id="conf-tgt-lang" class="highlight">--</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Vocab Size</td>
+                                                <td id="conf-vocab-size">--</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Embedding Dim (d_model)</td>
+                                                <td id="conf-d-model">--</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Layers (Encoder/Decoder)</td>
+                                                <td id="conf-layers">--</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Default Batch Size</td>
+                                                <td id="conf-batch-size">--</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Total Target Epochs</td>
+                                                <td id="conf-epochs">--</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="dashboard-card quick-actions-card">
+                            <div class="card-header">
+                                <h3><i data-lucide="play-circle"></i> Pipeline Quick Actions</h3>
+                            </div>
+                            <div class="card-body action-buttons-vertical">
+                                <div class="action-card" id="act-prep">
+                                    <div class="action-info">
+                                        <h4>1. Prepare Dataset</h4>
+                                        <p>Clean raw data & train tokenizer model</p>
+                                    </div>
+                                    <button class="btn btn-primary" onclick="switchToTab('prep')">Go to Prep</button>
+                                </div>
+                                <div class="action-card" id="act-train">
+                                    <div class="action-info">
+                                        <h4>2. Model Training</h4>
+                                        <p>Train Transformer weights on split data</p>
+                                    </div>
+                                    <button class="btn btn-primary" onclick="switchToTab('training')">Go to Train</button>
+                                </div>
+                                <div class="action-card" id="act-test">
+                                    <div class="action-info">
+                                        <h4>3. Evaluate & Test</h4>
+                                        <p>Compute BLEU scores and review translation pairs</p>
+                                    </div>
+                                    <button class="btn btn-primary" onclick="switchToTab('evaluation')">Go to Eval</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- TAB: DATASET EXPLORER -->
+                <section id="tab-dataset" class="tab-pane">
+                    <div class="dashboard-card table-card">
+                        <div class="card-header dataset-header">
+                            <div class="dataset-meta">
+                                <h3><i data-lucide="table"></i> Corpus File Preview</h3>
+                                <span class="badge" id="dataset-total-rows-badge">0 Rows</span>
+                            </div>
+                            <div class="pagination-controls">
+                                <button class="btn btn-secondary btn-icon" id="btn-dataset-prev"><i data-lucide="chevron-left"></i></button>
+                                <span class="pagination-indicator">Page <span id="dataset-page-num">1</span></span>
+                                <button class="btn btn-secondary btn-icon" id="btn-dataset-next"><i data-lucide="chevron-right"></i></button>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-scroll-container">
+                                <table class="data-table" id="dataset-preview-table">
+                                    <thead>
+                                        <tr id="dataset-headers">
+                                            <th>Loading...</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dataset-rows">
+                                        <tr>
+                                            <td>Please wait while the CSV is loaded...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- TAB: DATA PREP -->
+                <section id="tab-prep" class="tab-pane">
+                    <div class="alert alert-info">
+                        <i data-lucide="info"></i>
+                        <div>
+                            <strong>About Tokenizer Prep:</strong> This step tokenizes the CSV corpus, builds separate sentence piece vocabularies for source and target languages, and generates training splits. Must be run before training!
+                        </div>
+                    </div>
+                    
+                    <div class="console-action-layout">
+                        <div class="control-panel-card card">
+                            <h3>Execution Panel</h3>
+                            <p class="panel-desc">Launch the SentencePiece vocabulary preparation pipeline.</p>
+                            <div class="panel-actions">
+                                <button class="btn btn-success btn-large w-100" id="btn-start-prep">
+                                    <i data-lucide="play"></i> Start Data Preparation
+                                </button>
+                                <button class="btn btn-danger btn-large w-100 hidden" id="btn-stop-prep">
+                                    <i data-lucide="square"></i> Abort Process
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="console-card card">
+                            <div class="console-header">
+                                <span class="console-title"><i data-lucide="terminal"></i> Terminal Output</span>
+                                <div class="console-badges">
+                                    <span class="badge badge-pulse hidden" id="prep-running-badge">Running</span>
+                                </div>
+                            </div>
+                            <div class="console-body" id="prep-console-log">
+                                [System] Press "Start Data Preparation" to begin pipeline execution.
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- TAB: MODEL TRAINING -->
+                <section id="tab-training" class="tab-pane">
+                    <div class="training-layout">
+                        <div class="training-sidebar">
+                            
+                            <!-- CONFIG FORM -->
+                            <div class="card config-card">
+                                <h3>Training Parameters</h3>
+                                <form id="training-hyperparams-form">
+                                    <div class="form-group-row">
+                                        <div class="form-group">
+                                            <label for="input-epochs">Epochs</label>
+                                            <input type="number" id="input-epochs" name="epochs" min="1" max="1000">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="input-batch">Batch Size</label>
+                                            <input type="number" id="input-batch" name="batch_size" min="1" max="512">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="input-lr">Learning Rate</label>
+                                        <input type="number" step="0.00001" id="input-lr" name="learning_rate">
+                                    </div>
+                                    <div class="form-group-row">
+                                        <div class="form-group">
+                                            <label for="input-dmodel">d_model</label>
+                                            <input type="number" id="input-dmodel" name="d_model">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="input-dropout">Dropout</label>
+                                            <input type="number" step="0.01" id="input-dropout" name="dropout">
+                                        </div>
+                                    </div>
+                                    
+                                    <button type="submit" class="btn btn-secondary w-100" id="btn-save-hyperparams">
+                                        <i data-lucide="save"></i> Save Hyperparameters
+                                    </button>
+                                </form>
+                            </div>
+                            
+                            <!-- RUN CARD -->
+                            <div class="card run-card">
+                                <h3>Execution Control</h3>
+                                <div class="smoke-test-checkbox">
+                                    <input type="checkbox" id="check-smoke-test">
+                                    <label for="check-smoke-test">
+                                        <strong>Smoke Test Mode</strong>
+                                        <span>Limit to 2 epochs & 10 eval pairs</span>
+                                    </label>
+                                </div>
+                                <div class="action-buttons-group">
+                                    <button class="btn btn-success btn-large" id="btn-start-train">
+                                        <i data-lucide="play"></i> Train Model
+                                    </button>
+                                    <button class="btn btn-danger btn-large hidden" id="btn-stop-train">
+                                        <i data-lucide="square"></i> Abort
+                                    </button>
+                                </div>
+                            </div>
+                            
+                        </div>
+                        
+                        <div class="training-main">
+                            <!-- CHART CARD -->
+                            <div class="card chart-card">
+                                <div class="card-header">
+                                    <h3><i data-lucide="line-chart"></i> Training Performance Metrics</h3>
+                                    <span class="badge" id="chart-epoch-indicator">No History Data</span>
+                                </div>
+                                <div class="card-body chart-body">
+                                    <canvas id="loss-chart"></canvas>
+                                </div>
+                            </div>
+                            
+                            <!-- CONSOLE CARD -->
+                            <div class="console-card card">
+                                <div class="console-header">
+                                    <span class="console-title"><i data-lucide="terminal"></i> Training Log Output</span>
+                                    <div class="console-badges">
+                                        <span class="badge badge-pulse hidden" id="train-running-badge">Training</span>
+                                    </div>
+                                </div>
+                                <div class="console-body" id="train-console-log">
+                                    [System] Ready to start training.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- TAB: EVALUATION -->
+                <section id="tab-evaluation" class="tab-pane">
+                    <div class="eval-top-row">
+                        <div class="card eval-info-card">
+                            <h3>Test-Set Evaluator</h3>
+                            <p>Runs inference on the test split, calculates corpus-wide BLEU metrics, and outputs translated strings side-by-side.</p>
+                            <div class="eval-actions">
+                                <button class="btn btn-primary btn-large" id="btn-start-eval">
+                                    <i data-lucide="play-circle"></i> Run Test Set Evaluation
+                                </button>
+                                <button class="btn btn-danger btn-large hidden" id="btn-stop-eval">
+                                    <i data-lucide="square"></i> Abort
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="card bleu-gauge-card">
+                            <div class="bleu-header">
+                                <span>AGGREGATE BLEU SCORE</span>
+                                <i data-lucide="award"></i>
+                            </div>
+                            <div class="bleu-score-val" id="eval-bleu-val">--.-</div>
+                            <div class="bleu-footer" id="eval-bleu-details">No evaluation computed yet.</div>
+                        </div>
+                    </div>
+                    
+                    <!-- CONSOLE FOR EVAL RUNNING -->
+                    <div class="console-card card hidden" id="eval-console-wrapper">
+                        <div class="console-header">
+                            <span class="console-title"><i data-lucide="terminal"></i> Evaluation Output</span>
+                        </div>
+                        <div class="console-body" id="eval-console-log"></div>
+                    </div>
+                    
+                    <!-- COMPARISON TABLE -->
+                    <div class="dashboard-card table-card" id="eval-results-card">
+                        <div class="card-header dataset-header">
+                            <div class="dataset-meta">
+                                <h3><i data-lucide="git-compare"></i> Translation Comparison (Test Set)</h3>
+                                <span class="badge" id="eval-total-badge">0 Pairs</span>
+                            </div>
+                            <div class="pagination-controls">
+                                <button class="btn btn-secondary btn-icon" id="btn-eval-prev"><i data-lucide="chevron-left"></i></button>
+                                <span class="pagination-indicator">Page <span id="eval-page-num">1</span></span>
+                                <button class="btn btn-secondary btn-icon" id="btn-eval-next"><i data-lucide="chevron-right"></i></button>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-scroll-container">
+                                <table class="data-table" id="eval-preview-table">
+                                    <thead>
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Source Text (EN)</th>
+                                            <th>Reference (FR)</th>
+                                            <th>Hypothesis (Translation)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="eval-rows">
+                                        <tr>
+                                            <td colspan="4" class="text-center">No evaluation translations loaded. Execute "Run Test Set Evaluation" first.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- TAB: INTERACTIVE TRANSLATION -->
+                <section id="tab-translate" class="tab-pane">
+                    <div class="translate-container">
+                        <div class="translate-controls-top card">
+                            <div class="control-row">
+                                <div class="form-group flex-1">
+                                    <label for="trans-beam-size">Decoding Strategy</label>
+                                    <select id="trans-beam-size">
+                                        <option value="1">Greedy Decoding (Fastest)</option>
+                                        <option value="2">Beam Search (k=2)</option>
+                                        <option value="4" selected>Beam Search (k=4, Balanced)</option>
+                                        <option value="8">Beam Search (k=8, Best Quality)</option>
+                                    </select>
+                                </div>
+                                <div class="language-indicator">
+                                    <span class="lang-tag" id="trans-src-badge">EN</span>
+                                    <i data-lucide="arrow-right"></i>
+                                    <span class="lang-tag" id="trans-tgt-badge">FR</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="translate-boxes-row">
+                            <!-- SOURCE INPUT -->
+                            <div class="translate-box source-box">
+                                <div class="box-header">
+                                    <span>Source Text</span>
+                                    <button class="btn btn-secondary btn-sm" id="btn-trans-clear"><i data-lucide="trash-2"></i> Clear</button>
+                                </div>
+                                <textarea id="trans-input-text" placeholder="Type words or sentences in source language here..."></textarea>
+                            </div>
+                            
+                            <!-- TRANSLATION OUTPUT -->
+                            <div class="translate-box target-box">
+                                <div class="box-header">
+                                    <span>Model Translation</span>
+                                    <button class="btn btn-secondary btn-sm" id="btn-trans-copy"><i data-lucide="copy"></i> Copy</button>
+                                </div>
+                                <div class="translation-output-container">
+                                    <div class="translation-loader hidden" id="trans-loader">
+                                        <div class="spinner"></div>
+                                        <span>Model translating text...</span>
+                                    </div>
+                                    <textarea id="trans-output-text" readonly placeholder="Translation will appear here..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="translate-actions-bottom">
+                            <button class="btn btn-success btn-large w-100" id="btn-run-translate">
+                                <i data-lucide="languages"></i> Translate Text
+                            </button>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- TAB: DOCUMENTATION -->
+                <section id="tab-docs" class="tab-pane">
+                    <div class="docs-layout">
+                        <div class="docs-sidebar card">
+                            <h3>Documents</h3>
+                            <nav class="docs-nav">
+                                <a href="#doc-readme" class="doc-nav-item active" data-doc="readme">
+                                    <i data-lucide="file-text"></i> README Overview
+                                </a>
+                                <a href="#doc-architecture" class="doc-nav-item" data-doc="architecture">
+                                    <i data-lucide="cpu"></i> Model Architecture
+                                </a>
+                                <a href="#doc-training" class="doc-nav-item" data-doc="training">
+                                    <i data-lucide="activity"></i> Training Guide
+                                </a>
+                                <a href="#doc-results" class="doc-nav-item" data-doc="results">
+                                    <i data-lucide="bar-chart-2"></i> Experiment Results
+                                </a>
+                            </nav>
+                        </div>
+                        <div class="docs-content-pane card">
+                            <div class="docs-loader hidden" id="docs-loader">
+                                <div class="spinner"></div>
+                            </div>
+                            <div class="markdown-body" id="docs-markdown-container">
+                                <!-- Rendered Markdown will go here -->
+                                Select a document from the left to read.
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+            </div>
+        </main>
+    </div>
+    
+    <!-- Chart.js and Marked.js CDNs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- Frontend JS Application controller -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

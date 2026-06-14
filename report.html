@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Machine Translation Report</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1e3a8a;
+            --primary-light: #3b82f6;
+            --secondary: #0f172a;
+            --accent: #10b981;
+            --text-dark: #1e293b;
+            --text-muted: #64748b;
+            --bg-light: #f8fafc;
+            --border: #e2e8f0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--text-dark);
+            line-height: 1.6;
+            background-color: var(--bg-light);
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 60px 80px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            border-radius: 12px;
+            position: relative;
+        }
+
+        /* Print Button */
+        .print-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 50px;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+            transition: all 0.2s ease;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .print-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+        }
+
+        /* Cover Page */
+        .cover-page {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 40px 0;
+            page-break-after: always;
+        }
+
+        .cover-header {
+            border-left: 6px solid var(--primary);
+            padding-left: 24px;
+        }
+
+        .cover-header h3 {
+            font-family: 'Outfit', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--primary-light);
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .cover-title h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 48px;
+            font-weight: 800;
+            line-height: 1.15;
+            color: var(--secondary);
+            margin: 40px 0 20px 0;
+        }
+
+        .cover-title h2 {
+            font-size: 20px;
+            font-weight: 400;
+            color: var(--text-muted);
+        }
+
+        .cover-footer {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            border-top: 2px solid var(--border);
+            padding-top: 40px;
+            margin-top: auto;
+        }
+
+        .cover-meta {
+            font-size: 15px;
+        }
+
+        .cover-meta p {
+            margin-bottom: 6px;
+        }
+
+        .cover-meta strong {
+            color: var(--secondary);
+        }
+
+        /* General Typography */
+        h1, h2, h3, h4 {
+            font-family: 'Outfit', sans-serif;
+            color: var(--secondary);
+            margin-bottom: 16px;
+        }
+
+        h2 {
+            font-size: 26px;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 8px;
+            margin-top: 48px;
+        }
+
+        h3 {
+            font-size: 20px;
+            margin-top: 28px;
+            color: var(--primary);
+        }
+
+        p {
+            margin-bottom: 16px;
+            text-align: justify;
+        }
+
+        /* Code Blocks */
+        pre {
+            background-color: var(--bg-light);
+            padding: 16px 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+
+        code {
+            font-family: 'Fira Code', monospace;
+            font-size: 14px;
+            color: #b91c1c;
+        }
+
+        pre code {
+            color: var(--text-dark);
+        }
+
+        /* SVG Architecture Diagram Wrapper */
+        .diagram-container {
+            display: flex;
+            justify-content: center;
+            margin: 30px 0;
+            background: var(--bg-light);
+            border-radius: 12px;
+            padding: 24px;
+            border: 1px solid var(--border);
+        }
+
+        .diagram-container svg {
+            max-width: 100%;
+            height: auto;
+        }
+
+        /* Lists */
+        ul, ol {
+            margin-bottom: 16px;
+            padding-left: 24px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        /* Highlight Boxes */
+        .info-box {
+            background-color: #eff6ff;
+            border-left: 4px solid var(--primary-light);
+            padding: 16px 20px;
+            border-radius: 0 8px 8px 0;
+            margin: 24px 0;
+        }
+
+        .info-box p {
+            margin-bottom: 0;
+            color: #1e40af;
+            font-size: 15px;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0;
+            font-size: 15px;
+        }
+
+        th, td {
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            text-align: left;
+        }
+
+        th {
+            background-color: var(--bg-light);
+            color: var(--secondary);
+            font-weight: 600;
+        }
+
+        tr:nth-child(even) {
+            background-color: #fafafa;
+        }
+
+        /* Printable optimization */
+        @media print {
+            body {
+                background-color: #ffffff;
+                padding: 0;
+            }
+
+            .container {
+                box-shadow: none;
+                padding: 0;
+                max-width: 100%;
+            }
+
+            .print-btn {
+                display: none;
+            }
+
+            .page-break {
+                page-break-before: always;
+            }
+
+            h2, h3 {
+                page-break-after: avoid;
+            }
+
+            pre, table, .diagram-container {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Floating Print Button -->
+    <button class="print-btn" onclick="window.print()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+        Save as PDF / Print
+    </button>
+
+    <div class="container">
+        
+        <!-- COVER PAGE -->
+        <div class="cover-page">
+            <div class="cover-header">
+                <h3>College Engineering Project Report</h3>
+                <p>Department of Computer Science & Engineering</p>
+            </div>
+
+            <div class="cover-title">
+                <h1>Neural Machine Translation<br>using Custom Transformer Architecture</h1>
+                <h2>An end-to-end Sequence-to-Sequence translator implementing Self-Attention with a Flask visualization control panel.</h2>
+            </div>
+
+            <div class="cover-footer">
+                <div class="cover-meta">
+                    <p><strong>Prepared By:</strong> Student Representative</p>
+                    <p><strong>Domain:</strong> Deep Learning / NLP</p>
+                    <p><strong>Academic Year:</strong> 2026</p>
+                </div>
+                <div class="cover-meta" style="text-align: right;">
+                    <p><strong>Platform:</strong> PyTorch 2.x & Python</p>
+                    <p><strong>Dataset:</strong> English-French Parallel Corpus</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 1: ABSTRACT & INTRODUCTION -->
+        <div class="page-break">
+            <h2>1. Abstract & Introduction</h2>
+            <p>
+                Neural Machine Translation (NMT) represents a major advancement in the field of Natural Language Processing.
+                This project focuses on building, training, and deploying a custom Sequence-to-Sequence (Seq2Seq) translator based 
+                on the original <strong>Transformer Architecture</strong> proposed by Vaswani et al. (2017).
+            </p>
+            <p>
+                Traditional translation pipelines relied heavily on Recurrent Neural Networks (RNNs) and Long Short-Term Memory (LSTM) 
+                networks. However, these architectures struggle with parallelization due to their sequential design and suffer from 
+                information loss when translating long-range sentences. The Transformer architecture solves these limitations by utilizing 
+                the <strong>Self-Attention Mechanism</strong>, allowing the model to focus on relevant context words across the entire sequence 
+                simultaneously, regardless of their distance.
+            </p>
+
+            <div class="info-box">
+                <p><strong>Key Objectives:</strong> Implementing PyTorch encoder-decoder layers from scratch, compiling a SentencePiece subword tokenizer, configuring a responsive training monitoring dashboard, and tuning inference with beam search and repetition penalties.</p>
+            </div>
+
+            <h2>2. System Architecture</h2>
+            <p>
+                The model architecture consists of a symmetric encoder-decoder pipeline. The encoder maps an input sequence of symbol 
+                representations to a sequence of continuous representations, which the decoder then translates into an output sequence 
+                token-by-token.
+            </p>
+
+            <!-- Vector Diagram -->
+            <div class="diagram-container">
+                <svg width="600" height="320" viewBox="0 0 600 320">
+                    <!-- Source Blocks -->
+                    <rect x="30" y="240" width="100" height="40" rx="5" fill="#1e3a8a" />
+                    <text x="80" y="265" fill="white" font-family="sans-serif" font-size="12" text-anchor="middle">Source Tokens</text>
+                    
+                    <rect x="30" y="160" width="100" height="40" rx="5" fill="#3b82f6" />
+                    <text x="80" y="185" fill="white" font-family="sans-serif" font-size="12" text-anchor="middle">Embeddings + PE</text>
+                    
+                    <rect x="30" y="80" width="100" height="60" rx="5" fill="#0f172a" />
+                    <text x="80" y="115" fill="white" font-family="sans-serif" font-size="12" text-anchor="middle">Encoder Stack</text>
+
+                    <!-- Connector arrows -->
+                    <path d="M 80,240 L 80,200" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#arrow)" />
+                    <path d="M 80,160 L 80,140" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#arrow)" />
+
+                    <!-- Decoder Blocks -->
+                    <rect x="470" y="240" width="100" height="40" rx="5" fill="#1e3a8a" />
+                    <text x="520" y="265" fill="white" font-family="sans-serif" font-size="12" text-anchor="middle">Target Tokens</text>
+                    
+                    <rect x="470" y="160" width="100" height="40" rx="5" fill="#3b82f6" />
+                    <text x="520" y="185" fill="white" font-family="sans-serif" font-size="12" text-anchor="middle">Embeddings + PE</text>
+                    
+                    <rect x="470" y="80" width="100" height="60" rx="5" fill="#0f172a" />
+                    <text x="520" y="115" fill="white" font-family="sans-serif" font-size="12" text-anchor="middle">Decoder Stack</text>
+
+                    <path d="M 520,240 L 520,200" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#arrow)" />
+                    <path d="M 520,160 L 520,140" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#arrow)" />
+
+                    <!-- Attention Bridge -->
+                    <path d="M 130,110 L 470,110" stroke="#10b981" stroke-width="3" stroke-dasharray="5,5" fill="none" />
+                    <text x="300" y="95" fill="#10b981" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Cross-Attention (Query-Key Bridge)</text>
+
+                    <!-- Outputs -->
+                    <rect x="230" y="10" width="140" height="40" rx="5" fill="#10b981" />
+                    <text x="300" y="35" fill="white" font-family="sans-serif" font-size="12" text-anchor="middle" font-weight="bold">Output Softmax Projection</text>
+
+                    <path d="M 520,80 L 520,30 L 370,30" stroke="#64748b" stroke-width="2" fill="none" />
+
+                    <!-- Marker definition for arrows -->
+                    <defs>
+                        <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
+                        </marker>
+                    </defs>
+                </svg>
+            </div>
+        </div>
+
+        <!-- SECTION 2: IMPLEMENTATION DETAILS -->
+        <div class="page-break">
+            <h2>3. Implementation Details</h2>
+            <p>
+                The model is built using PyTorch and customized for efficient CPU execution during demonstration.
+                Its architecture and training details are structured as follows:
+            </p>
+
+            <h3>3.1 Model Hyperparameters</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Configuration Parameter</th>
+                        <th>Implementation Value</th>
+                        <th>Architectural Purpose</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Embedding Dim (d_model)</strong></td>
+                        <td>256</td>
+                        <td>Size of vector representation of tokens.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Attention Heads</strong></td>
+                        <td>4</td>
+                        <td>Sub-divisions of self-attention per layer.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Encoder / Decoder Layers</strong></td>
+                        <td>3 + 3</td>
+                        <td>Number of stacked Multi-Head Attention blocks.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>FFN Dimension (d_ff)</strong></td>
+                        <td>512</td>
+                        <td>Size of intermediate feed-forward projections.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Vocab Size</strong></td>
+                        <td>16,000</td>
+                        <td>Total target SentencePiece BPE vocabulary size.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Total Parameters</strong></td>
+                        <td>~12.2M</td>
+                        <td>Capacity of the NMT network.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>3.2 Embedded Mathematics</h3>
+            <p>
+                To provide position awareness without using recurrence, <strong>Sinusoidal Positional Encoding</strong> is added directly to token embeddings:
+            </p>
+            <pre><code>PE(pos, 2i)   = sin(pos / 10000^(2i/d_model))
+PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))</code></pre>
+            <p>
+                In the self-attention block, queries (Q), keys (K), and values (V) are projected, split across heads, and computed using Scaled Dot-Product Attention:
+            </p>
+            <pre><code>Attention(Q, K, V) = softmax( (Q * K^T) / sqrt(d_k) ) * V</code></pre>
+        </div>
+
+        <!-- SECTION 3: RECENT MODEL OPTIMIZATIONS -->
+        <div class="page-break">
+            <h2>4. Advanced Decoders & Project Optimization</h2>
+            <p>
+                During integration testing, two critical bugs were diagnosed and resolved to stabilize the pipeline for college showcase:
+            </p>
+            
+            <h3>4.1 Weight Tying & Embedding Scale Normalization</h3>
+            <p>
+                We linked target embeddings to output projection parameters to save network capacity (Weight Tying). Because output logits are dot products, initializing raw embeddings with standard normal distribution caused high variance outputs (~22.5 std), inflating initial cross-entropy loss to 90+. 
+                We resolved this by initializing embedding weights with $N(0, d_{model}^{-0.5})$ to ensure unit variance and stable initial training loss (~10.19).
+            </p>
+
+            <h3>4.2 Repetition Penalization and Max Length Safety Capping</h3>
+            <p>
+                In early training epochs, models tend to loop words. We implemented a Hugging Face-style repetition penalty inside the decoding script:
+            </p>
+            <pre><code># Apply repetition penalty dynamically during generation
+if repetition_penalty != 1.0:
+    for token in set(generated_tokens):
+        if logits[0, token] > 0:
+            logits[0, token] /= repetition_penalty
+        else:
+            logits[0, token] *= repetition_penalty</code></pre>
+            <p>
+                Additionally, because sequence length was optimized to 64 for demonstration speed, we created an active capping handler:
+                <code>max_len = min(max_decode_len, model_pe_limit)</code>. This successfully prevents indexing exceptions at generation boundaries.
+            </p>
+        </div>
+
+        <!-- SECTION 4: WEB INTERFACE AND RESULTS -->
+        <div class="page-break">
+            <h2>5. Visualization Dashboard & Performance</h2>
+            <p>
+                The project contains a comprehensive Flask-based web-control panel serving as the visual interface. It gives users immediate, visual control over every aspect of the pipeline:
+            </p>
+            <ul>
+                <li><strong>Interactive Translation Pane:</strong> Translate input text using either Greedy Decoding or Beam Search ($k=4, 8$) with active repetition penalties.</li>
+                <li><strong>Pipeline Task Control:</strong> Start/abort dataset preprocessing, training runs, or evaluation tasks, and view standard logs inside a real-time streaming output console.</li>
+                <li><strong>Loss Progress Tracking:</strong> Live graphing of training and validation loss updates as epochs progress.</li>
+                <li><strong>Config Editor:</strong> Live adjustments to model parameters directly from the browser.</li>
+            </ul>
+
+            <h3>5.1 Sample Translation Outputs</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Input (English)</th>
+                        <th>Target Translation</th>
+                        <th>Model Hypothesis (Epoch 1)</th>
+                        <th>Inference Decoding Configuration</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Nice to meet you.</td>
+                        <td>Ravi de vous rencontrer.</td>
+                        <td>J'ai difficile de te rencontrer.</td>
+                        <td>Beam Search (k=4), Penalty=1.5</td>
+                    </tr>
+                    <tr>
+                        <td>How are you?</td>
+                        <td>Comment ça va?</td>
+                        <td>Comment es-tu ?</td>
+                        <td>Beam Search (k=4), Penalty=1.5</td>
+                    </tr>
+                    <tr>
+                        <td>English is not my first language.</td>
+                        <td>L'anglais n'est pas ma langue maternelle.</td>
+                        <td>L'anglais n'est pas ma langue.</td>
+                        <td>Greedy decoding, Penalty=1.5</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>6. Conclusion</h2>
+            <p>
+                This project demonstrates the success of custom PyTorch-based Transformer models for machine translation.
+                By structuring a robust attention mechanism, normalizations, and implementing modern decoding enhancements, the model converges 
+                effectively on modest compute hardware. The integration of the interactive control dashboard makes this system a cohesive 
+                showcase for educational and practical applications.
+            </p>
+        </div>
+
+    </div>
+
+</body>
+</html>
