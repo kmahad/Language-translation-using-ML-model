@@ -8,6 +8,7 @@ Supports optional weight tying between target embedding and output
 projection layer.
 """
 
+from typing import Optional
 import torch
 import torch.nn as nn
 
@@ -108,8 +109,8 @@ class Transformer(nn.Module):
         self,
         src: torch.Tensor,
         tgt_input: torch.Tensor,
-        src_mask: torch.Tensor = None,
-        tgt_mask: torch.Tensor = None,
+        src_mask: Optional[torch.Tensor] = None,
+        tgt_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Forward pass for training (teacher forcing).
 
@@ -134,7 +135,7 @@ class Transformer(nn.Module):
         return logits
 
     def encode(
-        self, src: torch.Tensor, src_mask: torch.Tensor = None
+        self, src: torch.Tensor, src_mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """Encode source sequence (used during inference).
 
@@ -152,8 +153,8 @@ class Transformer(nn.Module):
         self,
         tgt: torch.Tensor,
         encoder_output: torch.Tensor,
-        src_mask: torch.Tensor = None,
-        tgt_mask: torch.Tensor = None,
+        src_mask: Optional[torch.Tensor] = None,
+        tgt_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Decode target sequence given encoder output (used during inference).
 

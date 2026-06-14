@@ -7,6 +7,7 @@ Stack of N identical decoder layers, each consisting of:
 3. Position-wise Feed-Forward Network (with residual + LayerNorm)
 """
 
+from typing import Optional
 import torch
 import torch.nn as nn
 
@@ -55,8 +56,8 @@ class DecoderLayer(nn.Module):
         self,
         x: torch.Tensor,
         encoder_output: torch.Tensor,
-        src_mask: torch.Tensor = None,
-        tgt_mask: torch.Tensor = None,
+        src_mask: Optional[torch.Tensor] = None,
+        tgt_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Process input through one decoder layer.
 
@@ -120,8 +121,8 @@ class Decoder(nn.Module):
         self,
         x: torch.Tensor,
         encoder_output: torch.Tensor,
-        src_mask: torch.Tensor = None,
-        tgt_mask: torch.Tensor = None,
+        src_mask: Optional[torch.Tensor] = None,
+        tgt_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Process input through all decoder layers.
 

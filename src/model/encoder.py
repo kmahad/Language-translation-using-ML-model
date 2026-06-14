@@ -6,6 +6,7 @@ Stack of N identical encoder layers, each consisting of:
 2. Position-wise Feed-Forward Network (with residual connection + LayerNorm)
 """
 
+from typing import Optional
 import torch
 import torch.nn as nn
 
@@ -41,7 +42,7 @@ class EncoderLayer(nn.Module):
         self.dropout2 = nn.Dropout(p=dropout)
 
     def forward(
-        self, x: torch.Tensor, src_mask: torch.Tensor = None
+        self, x: torch.Tensor, src_mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """Process input through one encoder layer.
 
@@ -91,7 +92,7 @@ class Encoder(nn.Module):
         self.norm = nn.LayerNorm(d_model)
 
     def forward(
-        self, x: torch.Tensor, src_mask: torch.Tensor = None
+        self, x: torch.Tensor, src_mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """Process input through all encoder layers.
 

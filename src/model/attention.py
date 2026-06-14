@@ -6,6 +6,7 @@ from "Attention Is All You Need" (Vaswani et al., 2017).
 """
 
 import math
+from typing import Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -52,7 +53,7 @@ class MultiHeadAttention(nn.Module):
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
-        mask: torch.Tensor = None,
+        mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Compute multi-head attention.
 
