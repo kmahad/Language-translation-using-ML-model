@@ -71,7 +71,11 @@ class Evaluator:
         # Safely unwrap model if wrapped (e.g. DataParallel) and check for positional encoding
         raw_model = self.model.module if hasattr(self.model, "module") else self.model
         if hasattr(raw_model, "tgt_embedding") and hasattr(raw_model.tgt_embedding, "positional_encoding"):
-            max_pe_len = raw_model.tgt_embedding.positional_encoding.pe.size(1)
+            pe_tensor = getattr(raw_model.tgt_embedding.positional_encoding, "pe", None)
+            if pe_tensor is not None:
+                max_pe_len = pe_tensor.size(1)
+            else:
+                max_pe_len = self.max_decode_len
         else:
             max_pe_len = self.max_decode_len
         max_len = min(self.max_decode_len, max_pe_len)

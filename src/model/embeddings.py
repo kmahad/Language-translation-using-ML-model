@@ -26,6 +26,10 @@ class TransformerEmbedding(nn.Module):
         dropout: Dropout rate.
         padding_idx: Index of the padding token (default 0).
     """
+    d_model: int
+    token_embedding: nn.Embedding
+    positional_encoding: PositionalEncoding
+    scale: float
 
     def __init__(
         self,

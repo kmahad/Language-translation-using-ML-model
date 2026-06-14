@@ -25,6 +25,7 @@ class PositionalEncoding(nn.Module):
         max_len: Maximum sequence length to pre-compute.
         dropout: Dropout rate applied after adding positional encoding.
     """
+    pe: torch.Tensor
 
     def __init__(self, d_model: int, max_len: int = 5000, dropout: float = 0.1):
         super().__init__()

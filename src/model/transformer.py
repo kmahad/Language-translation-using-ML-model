@@ -32,6 +32,13 @@ class Transformer(nn.Module):
         weight_tying: Whether to tie target embedding and output weights.
         padding_idx: Padding token index (default: 0).
     """
+    d_model: int
+    padding_idx: int
+    src_embedding: TransformerEmbedding
+    tgt_embedding: TransformerEmbedding
+    encoder: Encoder
+    decoder: Decoder
+    output_projection: nn.Linear
 
     def __init__(
         self,
