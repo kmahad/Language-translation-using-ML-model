@@ -8,10 +8,10 @@
 # --- Data Settings ---
 data:
   # Path to your parallel corpus (CSV or TSV)
-  data_file: "../eng_-french.csv"
+  data_file: "../en-fr.csv"
   # Column names in your CSV/TSV
-  src_column: "English words/sentences"
-  tgt_column: "French words/sentences"
+  src_column: "en"
+  tgt_column: "fr"
   # Language codes (used for logging and file naming)
   src_lang: "en"
   tgt_lang: "fr"
