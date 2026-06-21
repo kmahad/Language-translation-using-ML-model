@@ -1,180 +1,120 @@
-# Transformer Architecture Documentation
+# Statistical Machine Translation (SMT) Architecture Documentation
 
-This document explains the Transformer architecture implemented in this project, based on the seminal paper ["Attention Is All You Need"](https://arxiv.org/abs/1706.03762) (Vaswani et al., 2017).
+This document explains the Statistical Machine Translation (SMT) architecture implemented in this project. The system is built from scratch as a Phrase-Based SMT model with a log-linear feature combination.
 
 ## Overview
 
-The Transformer is a sequence-to-sequence model that relies entirely on attention mechanisms, dispensing with recurrence and convolutions. It processes all positions in parallel, making it highly efficient to train on modern GPUs.
+The SMT system translates a source sentence by breaking it into phrases, translating those phrases using a phrase translation table, reordering them, and selecting the highest-scoring translation hypothesis according to a log-linear model.
 
 ```
-Source Sentence → [Encoder] → Memory → [Decoder] → Target Sentence
+Source Sentence → [Tokenizer] → [Decoder / Beam Search] → Target Sentence
+                                       ▲
+                            [Phrase Table / LM / Weights]
 ```
 
-## Architecture Diagram
+## Architecture Components
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    TRANSFORMER MODEL                         │
-│                                                              │
-│  ┌─────────────────┐           ┌─────────────────────┐      │
-│  │    ENCODER       │           │     DECODER          │      │
-│  │                  │           │                      │      │
-│  │  ┌────────────┐  │           │  ┌────────────────┐  │      │
-│  │  │ Encoder    │  │           │  │ Decoder Layer  │  │      │
-│  │  │ Layer ×N   │  │  Memory   │  │ ×N             │  │      │
-│  │  │            │  │ ────────► │  │                │  │      │
-│  │  │ Self-Attn  │  │           │  │ Masked Self-   │  │      │
-│  │  │ + FFN      │  │           │  │ Attn + Cross-  │  │      │
-│  │  │            │  │           │  │ Attn + FFN     │  │      │
-│  │  └────────────┘  │           │  └────────────────┘  │      │
-│  │                  │           │                      │      │
-│  │  Positional Enc  │           │  Positional Enc      │      │
-│  │  + Embedding     │           │  + Embedding         │      │
-│  └─────────────────┘           └─────────────────────┘      │
-│         ▲                              ▲        │            │
-│         │                              │        ▼            │
-│    Source Tokens                  Target Tokens  Output       │
-│                                  (shifted)      Projection   │
-└─────────────────────────────────────────────────────────────┘
-```
+The architecture consists of the following pipeline components:
 
-## Components
+1. **Word Alignment (IBM Model 1)** (`src/model/alignment.py`)
+2. **Phrase Table Extraction & Lexical Weighting** (`src/model/phrase_table.py`)
+3. **N-gram Language Model** (`src/model/language_model.py`)
+4. **Log-Linear Model / Weights** (`src/model/smt_model.py`)
+5. **Beam Search Decoder** (`src/evaluation/inference.py`)
 
-### 1. Token Embeddings (`embeddings.py`)
+---
 
-Converts token IDs into dense vectors of dimension `d_model`.
+## 1. Word Alignment (IBM Model 1)
 
-```python
-embedding(x) = Embedding(x) × √d_model
-```
+Before extracting phrase pairs, we must determine word-level alignments between parallel sentences. We implement **IBM Model 1** trained using the **Expectation-Maximization (EM)** algorithm.
 
-The scaling by `√d_model` ensures the embeddings have a similar magnitude to the positional encodings.
+* **Model assumption**: The translation probability of a target sentence given a source sentence is the sum over all possible alignments of the product of translation probabilities of individual words:
+  $$P(\mathbf{f} | \mathbf{e}) = \frac{\epsilon}{(I+1)^J} \sum_{a_1=0}^I \cdots \sum_{a_J=0}^I \prod_{j=1}^J t(f_j | e_{a_j})$$
+* **EM Training**:
+  1. **Expectation (E-step)**: Compute fractional counts of alignments based on current lexical translation probabilities $t(f|e)$.
+  2. **Maximization (M-step)**: Re-estimate $t(f|e)$ by normalizing the fractional counts.
+* **Bi-directional Alignment**: We run IBM Model 1 in both directions ($src \to tgt$ and $tgt \to src$) and combine/use them to extract high-quality alignments.
 
-**File:** `src/model/embeddings.py`
+**File:** [alignment.py](file:///d:/ML/translator/src/model/alignment.py)
 
-### 2. Positional Encoding (`positional_encoding.py`)
+---
 
-Since the Transformer has no recurrence, it needs explicit position information. We use fixed sinusoidal encodings:
+## 2. Phrase Table Extraction & Lexical Weighting
 
-```
-PE(pos, 2i)   = sin(pos / 10000^(2i/d_model))
-PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))
-```
+Once word alignments are obtained, we extract phrase pairs that are consistent with the alignments.
 
-Properties:
-- Each position gets a unique encoding
-- Relative positions can be learned via linear combinations
-- Generalizes to longer sequences than seen during training
-- Not learned — registered as a buffer
+* **Consistency Criterion**: A source phrase $S$ and target phrase $T$ are consistent with alignment $A$ if:
+  1. At least one word in $S$ is aligned to a word in $T$.
+  2. No word in $S$ is aligned to a word outside $T$.
+  3. No word in $T$ is aligned to a word outside $S$.
+* **Probability Estimation**:
+  * $P(T|S) = \frac{count(S, T)}{count(S)}$
+  * $P(S|T) = \frac{count(S, T)}{count(T)}$
+* **Lexical Weights**: Because counts can be sparse, we compute lexical translation weights $lex(T|S)$ and $lex(S|T)$ using word translation probabilities $t(f|e)$ to smooth the phrase-level probabilities:
+  $$lex(T|S) = \prod_{i=1}^{|T|} \frac{1}{|A(t_i)|} \sum_{s \in A(t_i)} t(t_i | s)$$
 
-**File:** `src/model/positional_encoding.py`
+**File:** [phrase_table.py](file:///d:/ML/translator/src/model/phrase_table.py)
 
-### 3. Multi-Head Attention (`attention.py`)
+---
 
-The core mechanism of the Transformer. Computes how much each token should "attend to" every other token.
+## 3. N-gram Language Model
 
-**Scaled Dot-Product Attention:**
-```
-Attention(Q, K, V) = softmax(Q·K^T / √d_k) · V
-```
+The Language Model (LM) measures the fluency of the generated target text. We implement an $N$-gram Language Model (default $N=3$, Trigram) over target subwords.
 
-- **Q** (Query): What am I looking for?
-- **K** (Key): What do I contain?
-- **V** (Value): What information do I provide?
-- **Scaling by √d_k**: Prevents softmax saturation in high dimensions
+* **Probability Computation**:
+  $$P_{LM}(W) = \prod_{i=1}^{M} P(w_i | w_{i-N+1} \dots w_{i-1})$$
+* **Smoothing**: We implement Laplace (add-1) or simple add-$\alpha$ smoothing to handle out-of-vocabulary n-grams and zero counts.
 
-**Multi-Head:** Instead of one attention function, we run `n_heads` attention functions in parallel with different learned projections:
+**File:** [language_model.py](file:///d:/ML/translator/src/model/language_model.py)
 
-```
-MultiHead(Q, K, V) = Concat(head₁, ..., headₕ) · W_o
-where headᵢ = Attention(Q·Wᵢᵠ, K·Wᵢᵏ, V·Wᵢᵛ)
-```
+---
 
-This allows the model to attend to information from different representation subspaces.
+## 4. Log-Linear Model & Weight Tuning
 
-**Masking:**
-- **Padding mask**: Prevents attention to `<pad>` tokens
-- **Causal mask**: Prevents decoder from seeing future tokens (lower triangular matrix)
+The translation hypotheses are scored using a log-linear model combining several features:
 
-**File:** `src/model/attention.py`
+$$Score(S, T) = \sum_{i} \lambda_i h_i(S, T)$$
 
-### 4. Feed-Forward Network (`feed_forward.py`)
+### Feature Functions ($h_i$)
+1. **$p(T|S)$**: Log phrase translation probability ($tgt$ given $src$).
+2. **$p(S|T)$**: Log phrase translation probability ($src$ given $tgt$).
+3. **$lex(T|S)$**: Log lexical translation weight ($tgt$ given $src$).
+4. **$lex(S|T)$**: Log lexical translation weight ($src$ given $tgt$).
+5. **$LM$**: Log language model probability of the target sequence.
+6. **Phrase Penalty**: Constant cost per phrase to control the preference for longer or shorter phrases.
+7. **Word Penalty**: Constant cost per word to control the total length of the target sentence.
 
-Applied independently to each position:
+### Tuning
+We run validation-set tuning (coordinate descent or random search) to find the weights $\lambda_i$ that maximize the BLEU score on the validation subset.
 
-```
-FFN(x) = max(0, x·W₁ + b₁)·W₂ + b₂
-```
+**File:** [smt_model.py](file:///d:/ML/translator/src/model/smt_model.py)
 
-The inner dimension `d_ff` (default 2048) is typically 4× the model dimension, providing additional representational capacity.
+---
 
-**File:** `src/model/feed_forward.py`
+## 5. Beam Search Decoder
 
-### 5. Encoder (`encoder.py`)
+The search for the best translation is performed by a phrase-based beam search decoder.
 
-Stack of N identical layers (default N=6). Each layer:
+* **Hypothesis Generation**: The source sentence is covered step-by-step. For each uncovered span, we look up translation options in the phrase table.
+* **Beam Search**: We maintain a queue of hypotheses sorted by log-linear score. At each step, we expand the best hypotheses by translating a new source span and prune the beam to keep only the top `beam_size` candidates.
+* **Decoding Parameters**: Controlled by `beam_size` and `max_decode_len` in the configuration.
 
-```
-x → Multi-Head Self-Attention → Add & LayerNorm → FFN → Add & LayerNorm → output
-```
+**File:** [inference.py](file:///d:/ML/translator/src/evaluation/inference.py)
 
-- **Self-Attention**: Each position attends to all positions in the input
-- **Residual connections**: Help gradient flow through deep networks
-- **LayerNorm**: Stabilizes training by normalizing activations
+---
 
-**File:** `src/model/encoder.py`
+## Configuration Settings
 
-### 6. Decoder (`decoder.py`)
-
-Stack of N identical layers (default N=6). Each layer has three sub-layers:
-
-```
-x → Masked Self-Attention → Add & Norm
-  → Cross-Attention (over encoder output) → Add & Norm
-  → FFN → Add & Norm → output
-```
-
-- **Masked Self-Attention**: Attends only to previous positions (causal masking)
-- **Cross-Attention**: Queries come from decoder, keys/values from encoder output
-- This is how the decoder "reads" the source sentence
-
-**File:** `src/model/decoder.py`
-
-### 7. Full Transformer (`transformer.py`)
-
-Assembles all components:
-
-1. Source tokens → Source Embedding → Encoder → Memory
-2. Target tokens → Target Embedding → Decoder (+ Memory) → Output
-3. Output → Linear Projection → Target Vocabulary Logits
-
-**Weight Tying**: Optionally shares weights between the target embedding layer and the output projection, reducing parameters and often improving quality.
-
-**File:** `src/model/transformer.py`
-
-## Hyperparameter Choices
-
-| Parameter | Default | Rationale |
-|-----------|---------|-----------|
-| `d_model` | 512 | Standard base model size; good balance of capacity and speed |
-| `n_heads` | 8 | d_model/n_heads = 64 per head; standard choice |
-| `d_ff` | 2048 | 4× d_model; provides additional capacity |
-| `n_layers` | 6+6 | Standard depth; deeper models need more data |
-| `dropout` | 0.1 | Standard regularization for medium datasets |
-| `label_smoothing` | 0.1 | Prevents overconfident predictions |
-| `warmup_steps` | 4000 | Noam schedule; stabilizes early training |
-
-## Parameter Count
-
-With default settings:
-- Embedding layers: ~16.4M (2 × vocab_size × d_model)
-- Encoder: ~12.6M
-- Decoder: ~16.8M
-- Output projection: shared with target embedding
-- **Total: ~30M parameters** (with weight tying)
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `model.max_phrase_len` | 5 | Maximum phrase length for phrase table extraction |
+| `model.lm_order` | 3 | Order of target language model (e.g. 3 for Trigram) |
+| `model.alignment_iterations` | 4 | Number of EM iterations for IBM Model 1 |
+| `training.epochs` | 10 | Epochs of weight tuning on validation set |
+| `inference.beam_size` | 4 | Beam width for decoding |
 
 ## References
 
-1. Vaswani, A., et al. (2017). "Attention Is All You Need." NeurIPS.
-2. Kudo, T., & Richardson, J. (2018). "SentencePiece: A simple and language independent subword tokenizer." EMNLP.
+1. Koehn, P., et al. (2003). "Statistical Phrase-Based Translation." NAACL.
+2. Brown, P. F., et al. (1993). "The Mathematics of Statistical Machine Translation: Parameter Estimation." Computational Linguistics (IBM Models 1–5).
 3. Papineni, K., et al. (2002). "BLEU: a Method for Automatic Evaluation of Machine Translation." ACL.

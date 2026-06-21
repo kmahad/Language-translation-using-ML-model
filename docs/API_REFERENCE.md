@@ -1,6 +1,6 @@
-# API Reference
+# SMT API Reference
 
-Module-level API documentation for the translation project.
+Module-level API documentation for the SMT translation project.
 
 ## Data Pipeline
 
@@ -37,126 +37,79 @@ Train source and target tokenizers.
 #### `load_tokenizers(config)` → `dict`
 Load previously trained tokenizers.
 
-**Special Token IDs:**
-- `PAD_ID = 0`
-- `UNK_ID = 1`
-- `BOS_ID = 2`
-- `EOS_ID = 3`
-
 ---
 
 ### `src.data.dataset`
 
 #### `TranslationDataset(src_sentences, tgt_sentences, src_tokenizer, tgt_tokenizer, max_seq_len)`
-PyTorch Dataset for tokenized translation pairs.
+Python Dataset of tokenized translation pairs (lists of pieces).
+
+#### `DataLoader(dataset, batch_size, shuffle=False, drop_last=False)`
+Simple batch iterator for the `TranslationDataset`.
 
 #### `create_dataloaders(splits, src_tokenizer, tgt_tokenizer, max_seq_len, batch_size, num_workers)` → `dict`
 Create DataLoaders for all splits.
 
-#### Batch Format
-Each batch from the DataLoader is a dict:
+---
+
+## Model Components
+
+### `src.model.alignment.IBMModel1`
 ```python
-{
-    "src":        Tensor[B, src_len],      # Padded source IDs
-    "tgt_input":  Tensor[B, tgt_len-1],    # Target input (BOS → second-to-last)
-    "tgt_output": Tensor[B, tgt_len-1],    # Target labels (second → EOS)
-    "src_mask":   Tensor[B, 1, 1, src_len], # Source padding mask
-    "tgt_mask":   Tensor[B, 1, tgt_len, tgt_len], # Causal + padding mask
-}
+IBMModel1(iterations=10)
 ```
+- `train(src_sentences, tgt_sentences, logger=None)` → `None` — Trains lexical translation probabilities using EM.
+- `get_alignment(src_tokens, tgt_tokens)` → `List[Tuple[int, int]]` — Returns the Viterbi word alignment for a sentence pair.
+
+### `src.model.phrase_table.PhraseTable`
+```python
+PhraseTable(max_phrase_len=5)
+```
+- `extract_phrases(src_sentences, tgt_sentences, alignments)` → `None` — Heuristically extracts phrases consistent with the word alignments.
+- `compute_lexical_weights(aligner_src_tgt, aligner_tgt_src)` → `None` — Calculates directional lexical phrase translation weights.
+
+### `src.model.language_model.LanguageModel`
+```python
+LanguageModel(order=3)
+```
+- `train(sentences)` → `None` — Trains an N-gram language model on the target language sentences.
+- `get_ngram_prob(ngram)` → `float` — Returns the smoothed probability of a given subword sequence.
+
+### `src.model.smt_model.SMTModel`
+```python
+SMTModel(max_phrase_len=5, lm_order=3, alignment_iterations=10)
+```
+- `train_alignment_and_phrases(src_sentences, tgt_sentences, logger=None)` → `None`
+- `train_language_model(tgt_sentences, logger=None)` → `None`
+- `translate(src_text, src_tokenizer, tgt_tokenizer, beam_size=4, max_decode_len=64)` → `str` — Decodes source text into target string using beam search.
+- `save(filepath)` → `None`
+- `load(filepath)` → `None`
 
 ---
 
-## Model
-
-### `src.model.transformer.Transformer`
-
-```python
-Transformer(
-    src_vocab_size, tgt_vocab_size,
-    d_model=512, n_heads=8,
-    n_encoder_layers=6, n_decoder_layers=6,
-    d_ff=2048, dropout=0.1,
-    max_seq_len=128, weight_tying=True,
-)
-```
-
-- `forward(src, tgt_input, src_mask, tgt_mask)` → `Tensor[B, tgt_len, tgt_vocab]`
-- `encode(src, src_mask)` → `Tensor[B, src_len, d_model]`
-- `decode(tgt, encoder_output, src_mask, tgt_mask)` → `Tensor[B, tgt_len, d_model]`
-- `from_config(config, src_vocab_size, tgt_vocab_size)` → `Transformer` (classmethod)
-
-### `src.model.attention.MultiHeadAttention`
-```python
-MultiHeadAttention(d_model, n_heads, dropout=0.1)
-forward(query, key, value, mask=None) → Tensor
-```
-
-### `src.model.encoder.Encoder`
-```python
-Encoder(n_layers, d_model, n_heads, d_ff, dropout=0.1)
-forward(x, src_mask=None) → Tensor
-```
-
-### `src.model.decoder.Decoder`
-```python
-Decoder(n_layers, d_model, n_heads, d_ff, dropout=0.1)
-forward(x, encoder_output, src_mask=None, tgt_mask=None) → Tensor
-```
-
----
-
-## Training
+## Training & Tuning
 
 ### `src.training.trainer.Trainer`
-
 ```python
 Trainer(model, config, train_loader, val_loader, logger=None)
 ```
-
-- `train()` → `dict` — Run full training loop, returns history
-- `load_checkpoint(path)` — Resume from saved checkpoint
-
-### `src.training.loss.LabelSmoothingLoss`
-```python
-LabelSmoothingLoss(smoothing=0.1, padding_idx=0)
-forward(logits, targets) → Tensor
-```
-
-### `src.training.optimizer`
-- `get_optimizer(model, learning_rate, betas, eps)` → `Adam`
-- `NoamScheduler(optimizer, d_model, warmup_steps)` — call `.step()` after each batch
+- `train()` → `dict` — Runs SMT alignment training, phrase table extraction, language model training, and log-linear weight coordinate ascent tuning. Returns tuning history.
+- `load_checkpoint(checkpoint_path)` → `None` — Loads a trained model JSON checkpoint.
 
 ---
 
 ## Evaluation
 
 ### `src.evaluation.evaluator.Evaluator`
-
 ```python
-Evaluator(model, src_tokenizer, tgt_tokenizer, device, beam_size=4, max_decode_len=128)
+Evaluator(model, src_tokenizer, tgt_tokenizer, device, beam_size=4, max_decode_len=64)
 ```
-
 - `translate_sentence(sentence)` → `str`
-- `evaluate(src_sentences, ref_sentences, output_file=None, num_samples=10)` → `dict`
+- `evaluate(src_sentences, ref_sentences, output_file=None, num_samples=15)` → `dict` — Computes corpus-level BLEU on the test set.
 
 ### `src.evaluation.inference`
-- `greedy_decode(model, src, src_mask, max_len=128)` → `Tensor`
-- `beam_search_decode(model, src, src_mask, beam_size=4, max_len=128)` → `Tensor`
+- `beam_search_decode(src_pieces, model, beam_size=4, max_decode_len=64)` → `List[str]` — Searches the space of translation hypotheses to find the highest-scoring target translation pieces.
 
 ### `src.evaluation.metrics`
-- `compute_bleu(hypotheses, references)` → `dict` with `bleu`, `precisions`, `brevity_penalty`
+- `compute_bleu(hypotheses, references)` → `dict` — Computes corpus BLEU score using `sacrebleu`.
 - `compute_sentence_bleu(hypothesis, reference)` → `float`
-
----
-
-## Configuration
-
-### `src.config.TranslationConfig`
-
-```python
-config = TranslationConfig.from_yaml("config/default.yaml")
-config.apply_overrides({"epochs": 50})
-```
-
-Sub-configs: `config.data`, `config.tokenizer`, `config.model`, `config.training`, `config.inference`, `config.logging`

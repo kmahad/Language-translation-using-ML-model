@@ -1,17 +1,17 @@
-# Neural Machine Translation — From-Scratch Transformer
+# Statistical Machine Translation (SMT) — From-Scratch Phrase-Based SMT
 
-A complete, configurable Transformer-based translation system built entirely from scratch in PyTorch. Train on any language pair using your own parallel corpus (CSV/TSV).
+A complete, configurable Phrase-Based Statistical Machine Translation (SMT) system built entirely from scratch in Python. Train on any language pair using your own parallel corpus (CSV/TSV).
 
 ## Features
 
-- **Full Transformer from scratch** — every component (Multi-Head Attention, Encoder, Decoder, Positional Encoding) implemented by hand
-- **SentencePiece BPE tokenization** — language-agnostic, works with any script
-- **Configurable language pairs** — just change the YAML config for any source ↔ target
-- **Complete pipeline** — data prep → train → evaluate → interactive translation
-- **BLEU evaluation** — standardized scoring with sacrebleu
-- **Beam search & greedy decoding** — configurable inference strategies
-- **Checkpointing & early stopping** — save best model, resume training
-- **Comprehensive documentation** — architecture guide, training guide, API reference
+- **IBM Model 1 Word Alignment** — implemented from scratch with Expectation-Maximization (EM) training in both source-to-target and target-to-source directions.
+- **Phrase Extraction & Lexical Weighting** — heuristic phrase extraction from alignments and lexical weight estimation for extracted phrase pairs.
+- **N-gram Language Model** — target language n-gram language model with Kneser-Ney or simple smoothing.
+- **Log-Linear Model & Tuning** — combines translation features (phrase translation probabilities, lexical weights, language model score, phrase penalty, word penalty) via a log-linear model, with iterative weight tuning on a validation set to maximize BLEU.
+- **SentencePiece BPE tokenization** — language-agnostic subword tokenization, works with any script.
+- **Beam Search Decoding** — beam search decoder to efficiently search the phrase-translation space.
+- **BLEU evaluation** — standardized scoring with sacrebleu.
+- **Checkpointing** — saves trained alignments, phrase tables, language models, and weights to a JSON checkpoint.
 
 ## Quick Start
 
@@ -23,10 +23,10 @@ pip install -r requirements.txt
 
 ### 2. Prepare Your Dataset
 
-Create a CSV file at `data/raw/corpus.csv` with two columns:
+Provide a CSV file (e.g. `../en-fr.csv`) with parallel sentences:
 
 ```csv
-source,target
+en,fr
 Hello,Bonjour
 How are you?,Comment allez-vous?
 Thank you very much,Merci beaucoup
@@ -41,21 +41,20 @@ python scripts/prepare_data.py --config config/default.yaml
 
 ### 4. Train the Model
 
+Train the word aligner, extract the phrase table, train the language model, and tune log-linear weights:
+
 ```bash
 python scripts/train.py --config config/default.yaml
 ```
 
 Override settings on the fly:
 ```bash
-python scripts/train.py --config config/default.yaml --epochs 50 --batch_size 32
-```
-
-Resume from a checkpoint:
-```bash
-python scripts/train.py --config config/default.yaml --checkpoint checkpoints/best.pt
+python scripts/train.py --config config/default.yaml --epochs 10 --max_samples 15000
 ```
 
 ### 5. Evaluate on Test Set
+
+Evaluate the trained model on the test split:
 
 ```bash
 python scripts/test.py --config config/default.yaml
@@ -80,21 +79,16 @@ translator/
 │   ├── data/                    # Data pipeline
 │   │   ├── preprocessing.py     # CSV loading, cleaning, splitting
 │   │   ├── tokenizer.py         # SentencePiece wrapper
-│   │   └── dataset.py           # PyTorch Dataset + DataLoader
-│   ├── model/                   # Transformer (from scratch)
-│   │   ├── attention.py         # Multi-Head Attention
-│   │   ├── feed_forward.py      # Position-wise FFN
-│   │   ├── positional_encoding.py
-│   │   ├── embeddings.py        # Token + Positional Embeddings
-│   │   ├── encoder.py           # Encoder stack
-│   │   ├── decoder.py           # Decoder stack
-│   │   └── transformer.py       # Full model assembly
-│   ├── training/                # Training pipeline
-│   │   ├── loss.py              # Label-smoothed CrossEntropy
-│   │   ├── optimizer.py         # Adam + Noam LR scheduler
-│   │   └── trainer.py           # Training loop
+│   │   └── dataset.py           # PyTorch/Python Dataset helpers
+│   ├── model/                   # SMT components (from scratch)
+│   │   ├── alignment.py         # IBM Model 1 Alignment (EM)
+│   │   ├── phrase_table.py      # Phrase Extraction & Lexical Probabilities
+│   │   ├── language_model.py    # N-gram target language model
+│   │   └── smt_model.py         # SMT Model class tying everything together
+│   ├── training/                # Training/Tuning pipeline
+│   │   └── trainer.py           # Log-linear weight tuning loop
 │   ├── evaluation/              # Evaluation pipeline
-│   │   ├── inference.py         # Greedy + Beam search
+│   │   ├── inference.py         # Beam search decoder
 │   │   ├── metrics.py           # BLEU scores
 │   │   └── evaluator.py         # Full test-set evaluation
 │   └── utils/                   # Helpers
@@ -104,7 +98,7 @@ translator/
 │   ├── test.py
 │   └── translate.py
 ├── checkpoints/                 # Saved models (auto-generated)
-├── logs/                        # Training logs (auto-generated)
+├── logs/                        # Logs & translations (auto-generated)
 └── docs/                        # Documentation
 ```
 
@@ -114,42 +108,26 @@ All settings are in [`config/default.yaml`](config/default.yaml). Key settings:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| `data.data_file` | `../en-fr.csv` | Path to parallel corpus |
 | `data.src_lang` | `en` | Source language code |
 | `data.tgt_lang` | `fr` | Target language code |
-| `model.d_model` | `512` | Embedding/hidden dimension |
-| `model.n_heads` | `8` | Number of attention heads |
-| `model.n_encoder_layers` | `6` | Encoder layers |
-| `model.n_decoder_layers` | `6` | Decoder layers |
-| `training.batch_size` | `64` | Batch size |
-| `training.epochs` | `30` | Training epochs |
+| `data.max_samples` | `15000` | Max sample limit for efficiency |
+| `model.max_phrase_len` | `5` | Maximum phrase length for extraction |
+| `model.lm_order` | `3` | N-gram language model order (e.g. trigram) |
+| `model.alignment_iterations` | `4` | IBM Model 1 EM iterations |
+| `training.epochs` | `10` | Tuning epochs |
 | `tokenizer.vocab_size` | `16000` | Vocabulary size |
 | `inference.beam_size` | `4` | Beam search width |
-
-## Dataset Format
-
-Your dataset should be a CSV or TSV file with parallel sentences:
-
-**CSV (default):**
-```csv
-source,target
-Hello world,Bonjour le monde
-Good morning,Bonjour
-```
-
-**TSV:**
-```
-source	target
-Hello world	Bonjour le monde
-```
-
-For TSV, set `separator: "\t"` in the config.
 
 ## Requirements
 
 - Python 3.8+
-- PyTorch 2.0+
-- CUDA-capable GPU (recommended, CPU works but is ~10-50× slower)
-- 10K–100K sentence pairs for meaningful results
+- sacrebleu
+- pyyaml
+- sentencepiece
+- numpy
+- pandas
+- tqdm
 
 ## License
 
