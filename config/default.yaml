@@ -26,7 +26,7 @@ data:
   # Random seed for reproducible splits
   split_seed: 42
   # Limit sample size to prevent memory/timeout issues on large datasets
-  max_samples: 50000
+  max_samples: 15000
 
 # --- Tokenizer Settings ---
 tokenizer:
@@ -48,7 +48,7 @@ model:
   # N-gram language model order (e.g. 3 = trigram)
   lm_order: 3
   # Number of EM iterations for IBM Model 1 word alignment
-  alignment_iterations: 10
+  alignment_iterations: 4
 
 # --- Training Settings ---
 training:
