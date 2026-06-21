@@ -38,7 +38,7 @@ class ProcessRunner:
         self.type = None  # 'prep', 'train', or 'test'
         self.log_file = None
         self.f_out = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     def start(self, cmd, run_type, log_path):
         with self._lock:
@@ -72,33 +72,52 @@ class ProcessRunner:
             return True
 
     def is_running(self):
-        if self.process is None:
-            return False
-        status = self.process.poll()
-        if status is not None:
-            # Subprocess finished
-            self.process = None
-            if self.f_out:
-                try:
-                    self.f_out.close()
-                except Exception:
-                    pass
-                self.f_out = None
-            return False
-        return True
+        with self._lock:
+            if self.process is None:
+                return False
+            status = self.process.poll()
+            if status is not None:
+                # Subprocess finished
+                self.process = None
+                if self.f_out:
+                    try:
+                        self.f_out.close()
+                    except Exception:
+                        pass
+                    self.f_out = None
+                return False
+            return True
 
     def stop(self):
         with self._lock:
-            if not self.is_running():
+            proc = self.process
+            if proc is None:
+                return False
+            
+            # Check if it has already finished
+            status = proc.poll()
+            if status is not None:
+                self.process = None
+                if self.f_out:
+                    try:
+                        self.f_out.close()
+                    except Exception:
+                        pass
+                    self.f_out = None
                 return False
             
             # Attempt gentle terminate first
-            self.process.terminate()
             try:
-                self.process.wait(timeout=3)
+                proc.terminate()
+                proc.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 # Force kill if hung
-                self.process.kill()
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+            except Exception:
+                pass
                 
             self.process = None
             if self.f_out:
