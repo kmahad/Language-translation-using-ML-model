@@ -286,11 +286,11 @@
                             
                             <!-- CONFIG FORM -->
                             <div class="card config-card">
-                                <h3>Training Parameters</h3>
+                                <h3>SMT Training Parameters</h3>
                                 <form id="training-hyperparams-form">
                                     <div class="form-group-row">
                                         <div class="form-group">
-                                            <label for="input-epochs">Epochs</label>
+                                            <label for="input-epochs">Tuning Epochs</label>
                                             <input type="number" id="input-epochs" name="epochs" min="1" max="1000">
                                         </div>
                                         <div class="form-group">
@@ -299,17 +299,17 @@
                                         </div>
                                     </div>
                                     <div class="form-group">
-                                        <label for="input-lr">Learning Rate</label>
-                                        <input type="number" step="0.00001" id="input-lr" name="learning_rate">
+                                        <label for="input-max-phrase-len">Max Phrase Length</label>
+                                        <input type="number" id="input-max-phrase-len" name="max_phrase_len" min="1" max="10">
                                     </div>
                                     <div class="form-group-row">
                                         <div class="form-group">
-                                            <label for="input-dmodel">d_model</label>
-                                            <input type="number" id="input-dmodel" name="d_model">
+                                            <label for="input-lm-order">LM N-gram Order</label>
+                                            <input type="number" id="input-lm-order" name="lm_order" min="1" max="5">
                                         </div>
                                         <div class="form-group">
-                                            <label for="input-dropout">Dropout</label>
-                                            <input type="number" step="0.01" id="input-dropout" name="dropout">
+                                            <label for="input-alignment-iterations">Alignment Iterations</label>
+                                            <input type="number" id="input-alignment-iterations" name="alignment_iterations" min="1" max="50">
                                         </div>
                                     </div>
                                     

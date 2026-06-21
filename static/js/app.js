@@ -495,9 +495,9 @@ async function loadConfigData() {
         // Populate inputs
         document.getElementById('input-epochs').value = data.training.epochs;
         document.getElementById('input-batch').value = data.training.batch_size;
-        document.getElementById('input-lr').value = data.training.learning_rate;
-        document.getElementById('input-dmodel').value = data.model.d_model;
-        document.getElementById('input-dropout').value = data.model.dropout;
+        document.getElementById('input-max-phrase-len').value = data.model.max_phrase_len;
+        document.getElementById('input-lm-order').value = data.model.lm_order;
+        document.getElementById('input-alignment-iterations').value = data.model.alignment_iterations;
         
     } catch (err) {
         console.error("Error loading config parameters:", err);
@@ -513,9 +513,9 @@ async function saveHyperparams() {
         // Apply overrides
         config.training.epochs = parseInt(document.getElementById('input-epochs').value);
         config.training.batch_size = parseInt(document.getElementById('input-batch').value);
-        config.training.learning_rate = parseFloat(document.getElementById('input-lr').value);
-        config.model.d_model = parseInt(document.getElementById('input-dmodel').value);
-        config.model.dropout = parseFloat(document.getElementById('input-dropout').value);
+        config.model.max_phrase_len = parseInt(document.getElementById('input-max-phrase-len').value);
+        config.model.lm_order = parseInt(document.getElementById('input-lm-order').value);
+        config.model.alignment_iterations = parseInt(document.getElementById('input-alignment-iterations').value);
         
         const saveRes = await fetch('/api/config', {
             method: 'POST',
