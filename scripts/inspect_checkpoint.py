@@ -1,24 +1,24 @@
 """Quick checkpoint inspection script."""
-import torch
+import json
 import sys
+import os
 
-cp = torch.load('checkpoints/best.pt', map_location='cpu')
-print("Keys:", list(cp.keys()))
-print("Epoch:", cp.get('epoch', '?'))
-print("Best val loss:", cp.get('best_val_loss', '?'))
+checkpoint_path = 'checkpoints/best.json'
+if not os.path.exists(checkpoint_path):
+    print(f"Error: Checkpoint not found at {checkpoint_path}")
+    sys.exit(1)
 
-hist = cp.get('training_history', [])
-print(f"History entries: {len(hist)}")
-if hist:
-    print("\nTraining history (last 10):")
-    for h in hist[-10:]:
-        e = h.get('epoch', '?')
-        tl = h.get('train_loss', 0)
-        vl = h.get('val_loss', 0)
-        print(f"  Epoch {e}: train={tl:.4f}, val={vl:.4f}")
+with open(checkpoint_path, 'r', encoding='utf-8') as f:
+    cp = json.load(f)
 
-# Check if model trained meaningfully
-if hist:
-    first_vl = hist[0].get('val_loss', 0)
-    last_vl = hist[-1].get('val_loss', 0)
-    print(f"\nVal loss: {first_vl:.4f} -> {last_vl:.4f} (improvement: {first_vl - last_vl:.4f})")
+print("Checkpoint submodels:")
+for key in cp.keys():
+    if key == "weights":
+        print(f"  weights: {cp[key]}")
+    elif key == "phrase_table":
+        rules_count = sum(len(cand) for cand in cp[key]["phrase_probs"].values())
+        print(f"  phrase_table: {len(cp[key]['phrase_probs'])} source phrases, {rules_count} total translation rules")
+    elif key == "language_model":
+        print(f"  language_model: vocab size = {len(cp[key]['vocab'])}, order = {cp[key]['order']}")
+    else:
+        print(f"  {key}: present")

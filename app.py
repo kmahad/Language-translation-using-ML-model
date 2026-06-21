@@ -1,5 +1,5 @@
 """
-Web Interface for Neural Machine Translation.
+Web Interface for SMT Machine Translation.
 
 Provides API endpoints and visual control dashboard to run
 data preparation, model training, evaluation, and translation.
@@ -9,7 +9,6 @@ import os
 import sys
 import json
 import yaml
-import torch
 import subprocess
 import threading
 import pandas as pd
@@ -21,9 +20,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.config import load_config
 from src.data.tokenizer import load_tokenizers
-from src.model import Transformer
+from src.model import SMTModel
 from src.evaluation import Evaluator
-from src.utils.helpers import get_device
+
 
 app = Flask(__name__)
 
@@ -126,7 +125,7 @@ def get_translator():
     global _cached_translator, _cached_checkpoint_path, _cached_mtime
     
     config = load_config('config/default.yaml')
-    checkpoint_path = os.path.join(config.training.checkpoint_dir, "best.pt")
+    checkpoint_path = os.path.join(config.training.checkpoint_dir, "best.json")
     
     if not os.path.exists(checkpoint_path):
         return None, "No trained checkpoint found. Please train the model first."
@@ -140,27 +139,22 @@ def get_translator():
     try:
         # Load tokenizers
         tokenizers = load_tokenizers(config)
-        src_vocab_size = tokenizers["src"].vocab_size
-        tgt_vocab_size = tokenizers["tgt"].vocab_size
         
-        # Build model and load weights
-        device = get_device()
-        model = Transformer.from_config(config, src_vocab_size, tgt_vocab_size)
-        model = model.to(device)
-        
-        checkpoint = torch.load(checkpoint_path, map_location=device)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        model.eval()
+        # Build SMT model
+        model = SMTModel(
+            max_phrase_len=config.model.max_phrase_len,
+            lm_order=config.model.lm_order,
+            alignment_iterations=config.model.alignment_iterations,
+        )
+        model.load(checkpoint_path)
         
         evaluator = Evaluator(
             model=model,
             src_tokenizer=tokenizers["src"],
             tgt_tokenizer=tokenizers["tgt"],
-            device=device,
+            device=None,
             beam_size=config.inference.beam_size,
             max_decode_len=config.inference.max_decode_len,
-            length_penalty=config.inference.length_penalty,
-            repetition_penalty=getattr(config.inference, 'repetition_penalty', 1.0),
         )
         
         _cached_translator = evaluator
@@ -172,33 +166,43 @@ def get_translator():
         return None, f"Failed to load checkpoint: {str(e)}"
 
 def parse_training_metrics():
-    """Parses training loss/val loss metrics from the log file."""
+    """Parses SMT tuning log file to get epochs and mock losses from BLEU score."""
     log_path = 'logs/web_train.log'
     if not os.path.exists(log_path):
         return []
     
     epochs_data = []
     import re
-    # Pattern to match: Epoch 1/30 | Train Loss: 5.1234 | Val Loss: 4.8765 | LR: 1.00e-04
-    pattern = re.compile(
-        r"Epoch\s+(\d+)/\d+\s+\|\s+Train Loss:\s+([\d\.]+)\s+\|\s+Val Loss:\s+([\d\.]+)\s+\|\s+LR:\s+([\d\.e\-]+)"
-    )
     
     try:
         with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+            current_epoch = None
+            best_bleu = 0.0
             for line in f:
-                match = pattern.search(line)
-                if match:
-                    epoch = int(match.group(1))
-                    train_loss = float(match.group(2))
-                    val_loss = float(match.group(3))
-                    lr = float(match.group(4))
-                    epochs_data.append({
-                        "epoch": epoch,
-                        "train_loss": train_loss,
-                        "val_loss": val_loss,
-                        "lr": lr
-                    })
+                # Matches: Tuning Epoch 1/10
+                epoch_match = re.search(r"Tuning Epoch (\d+)/\d+", line)
+                if epoch_match:
+                    if current_epoch is not None:
+                        epochs_data.append({
+                            "epoch": current_epoch,
+                            "train_loss": max(0.0, 100.0 - best_bleu * 2),
+                            "val_loss": max(0.0, 100.0 - best_bleu),
+                            "lr": 0.0
+                        })
+                    current_epoch = int(epoch_match.group(1))
+                
+                # Matches: BLEU = 12.34
+                bleu_match = re.search(r"BLEU = ([\d\.]+)", line)
+                if bleu_match:
+                    best_bleu = float(bleu_match.group(1))
+                    
+            if current_epoch is not None:
+                epochs_data.append({
+                    "epoch": current_epoch,
+                    "train_loss": max(0.0, 100.0 - best_bleu * 2),
+                    "val_loss": max(0.0, 100.0 - best_bleu),
+                    "lr": 0.0
+                })
     except Exception as e:
         print(f"Error parsing log metrics: {e}")
         
@@ -214,7 +218,7 @@ def get_status():
     """Checks translation system state and background process status."""
     config = load_config('config/default.yaml')
     dataset_path = get_dataset_path()
-    checkpoint_path = os.path.join(config.training.checkpoint_dir, "best.pt")
+    checkpoint_path = os.path.join(config.training.checkpoint_dir, "best.json")
     
     # Tokenizer trained checks
     if config.tokenizer.shared_vocab:
@@ -224,22 +228,23 @@ def get_status():
         src_tok_path = os.path.join(config.tokenizer.model_dir, f"sp_{config.data.src_lang}.model")
         tgt_tok_path = os.path.join(config.tokenizer.model_dir, f"sp_{config.data.tgt_lang}.model")
     
-    # Active device detection
-    device_name = "CPU"
-    if torch.cuda.is_available():
-        device_name = f"CUDA ({torch.cuda.get_device_name(0)})"
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        device_name = "Apple MPS"
+    # Active device detection (SMT is CPU-only, no GPU needed)
+    device_name = "CPU (SMT - No GPU needed)"
 
     # Model info from checkpoint
     checkpoint_info = None
     if os.path.exists(checkpoint_path):
         try:
-            checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
+            with open(checkpoint_path, 'r', encoding='utf-8') as f:
+                checkpoint = json.load(f)
+            
+            # Count translation rules in phrase table
+            rules_count = sum(len(cand) for cand in checkpoint["phrase_table"]["phrase_probs"].values())
+            
             checkpoint_info = {
-                "epoch": checkpoint.get("epoch", "N/A"),
-                "best_val_loss": checkpoint.get("best_val_loss", 0.0),
-                "has_history": "training_history" in checkpoint
+                "epoch": "SMT Model",
+                "best_val_loss": rules_count,  # displays in "Best Loss" area on UI
+                "has_history": False
             }
         except Exception:
             checkpoint_info = {"epoch": "Error loading", "best_val_loss": 0.0}
@@ -263,9 +268,9 @@ def get_status():
             "vocab_size": config.tokenizer.vocab_size,
             "epochs": config.training.epochs,
             "batch_size": config.training.batch_size,
-            "d_model": config.model.d_model,
-            "n_layers": config.model.n_encoder_layers,
-            "device_type": str(get_device())
+            "d_model": "N/A (SMT)",
+            "n_layers": f"MaxPhraseLen={config.model.max_phrase_len}",
+            "device_type": "cpu"
         }
     })
 

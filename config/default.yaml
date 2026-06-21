@@ -1,8 +1,8 @@
 # ============================================================
-# Neural Machine Translation — Configuration
+# Statistical Machine Translation — Configuration
 # ============================================================
 # Modify these settings for your specific translation task.
-# CLI overrides: python scripts/train.py --config config/default.yaml --epochs 50
+# CLI overrides: python scripts/train.py --config config/default.yaml --epochs 10
 # ============================================================
 
 # --- Data Settings ---
@@ -39,58 +39,36 @@ tokenizer:
   # Directory to save trained tokenizer models
   model_dir: "data/processed"
 
-# --- Model Architecture ---
+# --- SMT Model Settings ---
 model:
-  # Embedding / hidden dimension
-  d_model: 256
-  # Number of attention heads
-  n_heads: 4
-  # Number of encoder layers
-  n_encoder_layers: 3
-  # Number of decoder layers
-  n_decoder_layers: 3
-  # Feed-forward inner dimension
-  d_ff: 512
-  # Dropout rate
-  dropout: 0.1
-  # Tie target embedding weights with output projection
-  weight_tying: true
+  # Maximum phrase length for phrase extraction
+  max_phrase_len: 5
+  # N-gram language model order (e.g. 3 = trigram)
+  lm_order: 3
+  # Number of EM iterations for IBM Model 1 word alignment
+  alignment_iterations: 10
 
 # --- Training Settings ---
 training:
-  # Batch size (reduce if GPU runs out of memory)
+  # Number of epochs for weight tuning on validation set
+  epochs: 10
   batch_size: 64
-  # Number of training epochs
-  epochs: 20
-  # Peak learning rate
-  learning_rate: 0.0003
-  # Warmup steps for Noam scheduler
-  warmup_steps: 2000
-  # Label smoothing for cross-entropy loss
-  label_smoothing: 0.1
-  # Gradient clipping max norm
-  grad_clip: 1.0
-  # Save checkpoint every N epochs
-  checkpoint_every: 5
-  # Early stopping patience (epochs without improvement)
-  early_stopping_patience: 5
+  num_workers: 0
   # Checkpoint directory
   checkpoint_dir: "checkpoints"
   # Random seed for reproducibility
   seed: 42
-  # Number of DataLoader workers
-  num_workers: 2
+  # Early stopping patience (epochs without improvement)
+  early_stopping_patience: 5
+  # Save checkpoint every N epochs
+  checkpoint_every: 5
 
 # --- Inference Settings ---
 inference:
   # Beam search beam size (1 = greedy decoding)
   beam_size: 4
-  # Maximum decoding length
+  # Maximum decoding length (in tokens)
   max_decode_len: 64
-  # Length normalization alpha for beam search
-  length_penalty: 0.6
-  # Repetition penalty (1.0 = no penalty, >1.0 penalizes word loops)
-  repetition_penalty: 1.5
 
 # --- Logging ---
 logging:

@@ -21,12 +21,10 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-import torch
-
 from src.config import get_config_from_args
 from src.data.preprocessing import load_and_split_data
 from src.data.tokenizer import load_tokenizers
-from src.model import Transformer
+from src.model import SMTModel
 from src.evaluation import Evaluator
 from src.utils.helpers import set_seed, get_device, count_parameters, format_number
 
@@ -42,7 +40,7 @@ def main():
     device = get_device()
 
     print("=" * 60)
-    print("TRANSFORMER TRANSLATION - EVALUATION")
+    print("SMT TRANSLATION - EVALUATION")
     print("=" * 60)
 
     # Load data (we only need the test split)
@@ -64,13 +62,15 @@ def main():
 
     # Build model
     print("Building model...")
-    model = Transformer.from_config(config, src_vocab_size, tgt_vocab_size)
-    model = model.to(device)
-    print(f"Model parameters: {format_number(count_parameters(model))}")
+    model = SMTModel(
+        max_phrase_len=config.model.max_phrase_len,
+        lm_order=config.model.lm_order,
+        alignment_iterations=config.model.alignment_iterations,
+    )
 
     # Load checkpoint
     checkpoint_path = getattr(config, "_checkpoint", None) or \
-                      os.path.join(config.training.checkpoint_dir, "best.pt")
+                      os.path.join(config.training.checkpoint_dir, "best.json")
 
     if not os.path.exists(checkpoint_path):
         print(f"\nError: Checkpoint not found at {checkpoint_path}")
@@ -78,10 +78,8 @@ def main():
         return
 
     print(f"Loading checkpoint: {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    print(f"Loaded model from epoch {checkpoint['epoch']} "
-          f"(val_loss: {checkpoint['best_val_loss']:.4f})")
+    model.load(checkpoint_path)
+    print(f"Loaded model rules: {format_number(count_parameters(model))}")
 
     # Create evaluator
     evaluator = Evaluator(
@@ -91,7 +89,6 @@ def main():
         device=device,
         beam_size=config.inference.beam_size,
         max_decode_len=config.inference.max_decode_len,
-        length_penalty=config.inference.length_penalty,
     )
 
     # Evaluate

@@ -1,45 +1,27 @@
 """
-PyTorch Dataset and DataLoader for translation pairs.
+Pure Python Translation Dataset and DataLoader for Statistical Machine Translation.
 
-Handles tokenized source/target pairs with dynamic padding
-and proper masking for the Transformer.
+Handles tokenized source/target pairs without any PyTorch dependencies.
 """
 
-from typing import List, Tuple, Optional
-
-import torch
-from torch.utils.data import Dataset, DataLoader
-
-from .tokenizer import Tokenizer, PAD_ID, BOS_ID, EOS_ID
+from typing import List, Tuple, Dict, Any
+import random
 
 
-class TranslationDataset(Dataset):
-    """Dataset of tokenized source-target translation pairs.
+class TranslationDataset:
+    """Dataset of tokenized source-target translation pairs (lists of pieces)."""
 
-    Each item is a pair of token ID lists (src_ids, tgt_ids), truncated
-    to max_seq_len.
-    """
-
-    def __init__(
-        self,
-        src_sentences: List[str],
-        tgt_sentences: List[str],
-        src_tokenizer: Tokenizer,
-        tgt_tokenizer: Tokenizer,
-        max_seq_len: int = 128,
-    ):
-        """Initialize the dataset.
+    def __init__(self, src_sentences: List[str], tgt_sentences: List[str], src_tokenizer, tgt_tokenizer, max_seq_len: int = 128):
+        """Initialize dataset.
 
         Args:
-            src_sentences: List of source language sentences.
-            tgt_sentences: List of target language sentences.
-            src_tokenizer: Trained source tokenizer.
-            tgt_tokenizer: Trained target tokenizer.
-            max_seq_len: Maximum sequence length (including BOS/EOS).
+            src_sentences: List of raw source sentences.
+            tgt_sentences: List of raw target sentences.
+            src_tokenizer: Tokenizer for source language.
+            tgt_tokenizer: Tokenizer for target language.
+            max_seq_len: Max length for truncation.
         """
-        assert len(src_sentences) == len(tgt_sentences), \
-            "Source and target must have equal length"
-
+        assert len(src_sentences) == len(tgt_sentences), "Source and target sentences must match in count."
         self.src_sentences = src_sentences
         self.tgt_sentences = tgt_sentences
         self.src_tokenizer = src_tokenizer
@@ -49,139 +31,75 @@ class TranslationDataset(Dataset):
     def __len__(self) -> int:
         return len(self.src_sentences)
 
-    def __getitem__(self, idx: int) -> Tuple[List[int], List[int]]:
-        """Get a single tokenized pair.
+    def __getitem__(self, idx: int) -> Tuple[List[str], List[str]]:
+        # For SMT, we work with lists of token strings (pieces)
+        src_tokens = self.src_tokenizer.encode_as_pieces(self.src_sentences[idx])
+        tgt_tokens = self.tgt_tokenizer.encode_as_pieces(self.tgt_sentences[idx])
 
-        Returns:
-            Tuple of (src_ids, tgt_ids), both truncated to max_seq_len.
-        """
-        src_ids = self.src_tokenizer.encode(
-            self.src_sentences[idx], add_bos=True, add_eos=True
-        )
-        tgt_ids = self.tgt_tokenizer.encode(
-            self.tgt_sentences[idx], add_bos=True, add_eos=True
-        )
+        # Truncate
+        if len(src_tokens) > self.max_seq_len:
+            src_tokens = src_tokens[:self.max_seq_len]
+        if len(tgt_tokens) > self.max_seq_len:
+            tgt_tokens = tgt_tokens[:self.max_seq_len]
 
-        # Truncate to max_seq_len
-        src_ids = src_ids[:self.max_seq_len]
-        tgt_ids = tgt_ids[:self.max_seq_len]
-
-        return src_ids, tgt_ids
+        return src_tokens, tgt_tokens
 
 
-def collate_fn(batch: List[Tuple[List[int], List[int]]]) -> dict:
-    """Custom collate function for dynamic padding.
+class DataLoader:
+    """A simple batch iterator for TranslationDataset."""
 
-    Pads all sequences in a batch to the length of the longest sequence
-    in that batch (not the global max_seq_len), for efficiency.
+    def __init__(self, dataset: TranslationDataset, batch_size: int, shuffle: bool = False, drop_last: bool = False):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.drop_last = drop_last
 
-    Args:
-        batch: List of (src_ids, tgt_ids) tuples.
+    def __len__(self) -> int:
+        n = len(self.dataset)
+        if self.drop_last:
+            return n // self.batch_size
+        return (n + self.batch_size - 1) // self.batch_size
 
-    Returns:
-        Dictionary containing:
-            - src: Padded source tensor [batch_size, src_len]
-            - tgt_input: Target input (shifted right, starts with BOS) [batch_size, tgt_len-1]
-            - tgt_output: Target labels (ends with EOS) [batch_size, tgt_len-1]
-            - src_mask: Source padding mask [batch_size, 1, 1, src_len]
-            - tgt_mask: Combined causal + padding mask [batch_size, 1, tgt_len-1, tgt_len-1]
-    """
-    src_batch, tgt_batch = zip(*batch)
+    def __iter__(self):
+        indices = list(range(len(self.dataset)))
+        if self.shuffle:
+            random.shuffle(indices)
 
-    # Determine max lengths in this batch
-    src_max_len = max(len(s) for s in src_batch)
-    tgt_max_len = max(len(t) for t in tgt_batch)
-
-    # Pad sequences
-    src_padded = []
-    tgt_input_padded = []
-    tgt_output_padded = []
-
-    for src_ids, tgt_ids in zip(src_batch, tgt_batch):
-        # Pad source
-        src_padded.append(src_ids + [PAD_ID] * (src_max_len - len(src_ids)))
-
-        # Target input: everything except the last token (teacher forcing)
-        # e.g., [BOS, w1, w2, w3] → input is [BOS, w1, w2]
-        tgt_in = tgt_ids[:-1]
-        tgt_in_padded = tgt_in + [PAD_ID] * (tgt_max_len - 1 - len(tgt_in))
-        tgt_input_padded.append(tgt_in_padded)
-
-        # Target output: everything except the first token (labels)
-        # e.g., [BOS, w1, w2, EOS] → output is [w1, w2, EOS]
-        tgt_out = tgt_ids[1:]
-        tgt_out_padded = tgt_out + [PAD_ID] * (tgt_max_len - 1 - len(tgt_out))
-        tgt_output_padded.append(tgt_out_padded)
-
-    # Convert to tensors
-    src = torch.tensor(src_padded, dtype=torch.long)
-    tgt_input = torch.tensor(tgt_input_padded, dtype=torch.long)
-    tgt_output = torch.tensor(tgt_output_padded, dtype=torch.long)
-
-    # Create masks
-    src_mask = create_padding_mask(src)                          # [B, 1, 1, src_len]
-    tgt_padding_mask = create_padding_mask(tgt_input)            # [B, 1, 1, tgt_len]
-    tgt_causal_mask = create_causal_mask(tgt_input.size(1))      # [1, 1, tgt_len, tgt_len]
-    tgt_mask = tgt_padding_mask & tgt_causal_mask                # [B, 1, tgt_len, tgt_len]
-
-    return {
-        "src": src,
-        "tgt_input": tgt_input,
-        "tgt_output": tgt_output,
-        "src_mask": src_mask,
-        "tgt_mask": tgt_mask,
-    }
-
-
-def create_padding_mask(seq: torch.Tensor) -> torch.Tensor:
-    """Create a padding mask (True where NOT padded).
-
-    Args:
-        seq: Token ID tensor of shape [batch_size, seq_len].
-
-    Returns:
-        Boolean mask of shape [batch_size, 1, 1, seq_len].
-        True = attend, False = ignore (pad).
-    """
-    return (seq != PAD_ID).unsqueeze(1).unsqueeze(2)  # [B, 1, 1, seq_len]
-
-
-def create_causal_mask(size: int) -> torch.Tensor:
-    """Create a causal (look-ahead) mask for the decoder.
-
-    Prevents attention to future tokens.
-
-    Args:
-        size: Sequence length.
-
-    Returns:
-        Boolean lower-triangular mask of shape [1, 1, size, size].
-        True = attend, False = mask out.
-    """
-    mask = torch.tril(torch.ones(size, size, dtype=torch.bool))
-    return mask.unsqueeze(0).unsqueeze(0)  # [1, 1, size, size]
+        n_batches = len(self)
+        for i in range(n_batches):
+            batch_indices = indices[i * self.batch_size : (i + 1) * self.batch_size]
+            batch_src = []
+            batch_tgt = []
+            for idx in batch_indices:
+                src, tgt = self.dataset[idx]
+                batch_src.append(src)
+                batch_tgt.append(tgt)
+            yield {
+                "src": batch_src,
+                "tgt": batch_tgt
+            }
 
 
 def create_dataloaders(
     splits: dict,
-    src_tokenizer: Tokenizer,
-    tgt_tokenizer: Tokenizer,
+    src_tokenizer,
+    tgt_tokenizer,
     max_seq_len: int = 128,
     batch_size: int = 64,
-    num_workers: int = 2,
+    num_workers: int = 0, # Ignored in pure Python loader
 ) -> dict:
     """Create DataLoaders for train, val, and test splits.
 
     Args:
-        splits: Dictionary from preprocessing with 'train', 'val', 'test' keys.
-        src_tokenizer: Trained source tokenizer.
-        tgt_tokenizer: Trained target tokenizer.
-        max_seq_len: Maximum sequence length.
+        splits: Dict from load_and_split_data.
+        src_tokenizer: Source language tokenizer.
+        tgt_tokenizer: Target language tokenizer.
+        max_seq_len: Max sequence length.
         batch_size: Batch size.
-        num_workers: Number of data loading workers.
+        num_workers: Unused, kept for compatibility.
 
     Returns:
-        Dictionary mapping split names to DataLoader instances.
+        Dict mapping split name -> DataLoader.
     """
     loaders = {}
 
@@ -201,9 +119,6 @@ def create_dataloaders(
             dataset,
             batch_size=batch_size,
             shuffle=(split_name == "train"),
-            collate_fn=collate_fn,
-            num_workers=num_workers,
-            pin_memory=True,
             drop_last=(split_name == "train"),
         )
 

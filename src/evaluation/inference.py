@@ -1,198 +1,191 @@
 """
-Inference: Greedy decoding and Beam Search for translation.
+Monotonic Phrase-Based Beam Search Decoder for SMT.
 
-These methods generate translations token-by-token at inference time,
-since the full target sequence is unknown.
+Decodes a source sentence to a target sentence by translating source phrases
+monotonically from left-to-right using the SMT log-linear model.
 """
 
-import torch
-import torch.nn.functional as F
-
-from ..data.tokenizer import BOS_ID, EOS_ID, PAD_ID
-from ..data.dataset import create_padding_mask, create_causal_mask
+import math
+from typing import List, Tuple, Dict, Any
 
 
-@torch.no_grad()
-def greedy_decode(
-    model,
-    src: torch.Tensor,
-    src_mask: torch.Tensor,
-    max_len: int = 128,
-    repetition_penalty: float = 1.0,
-    device: torch.device = None,
-) -> torch.Tensor:
-    """Greedy decoding: pick the highest-probability token at each step.
-
-    Args:
-        model: Trained Transformer model.
-        src: Source token IDs [1, src_len] (single sentence).
-        src_mask: Source padding mask [1, 1, 1, src_len].
-        max_len: Maximum number of tokens to generate.
-        repetition_penalty: Repetition penalty (1.0 = no penalty, >1.0 penalizes already generated tokens).
-        device: Device to run on.
-
-    Returns:
-        Generated token IDs [1, generated_len] (including BOS, up to EOS).
-    """
-    if device is None:
-        device = src.device
-
-    model.eval()
-
-    # Encode source once
-    encoder_output = model.encode(src, src_mask)
-
-    # Start with BOS token
-    tgt_ids = torch.tensor([[BOS_ID]], dtype=torch.long, device=device)
-
-    for _ in range(max_len - 1):
-        # Create target mask (causal + padding)
-        tgt_mask = create_causal_mask(tgt_ids.size(1)).to(device)
-
-        # Decode
-        decoder_output = model.decode(tgt_ids, encoder_output, src_mask, tgt_mask)
-
-        # Get logits for the last position
-        logits = model.output_projection(decoder_output[:, -1, :])  # [1, vocab_size]
-
-        # Apply repetition penalty
-        if repetition_penalty != 1.0:
-            for token in set(tgt_ids[0].tolist()):
-                if token not in (PAD_ID, BOS_ID, EOS_ID):
-                    val = logits[0, token].item()
-                    if val > 0:
-                        logits[0, token] /= repetition_penalty
-                    else:
-                        logits[0, token] *= repetition_penalty
-
-        # Pick the highest probability token
-        next_token = logits.argmax(dim=-1, keepdim=True)  # [1, 1]
-
-        # Append to generated sequence
-        tgt_ids = torch.cat([tgt_ids, next_token], dim=1)
-
-        # Stop if EOS is generated
-        if next_token.item() == EOS_ID:
-            break
-
-    return tgt_ids
+def safe_log(val: float) -> float:
+    """Compute log value safely to avoid domain errors."""
+    return math.log(max(val, 1e-15))
 
 
-@torch.no_grad()
+def get_lm_score(lm: Any, context_tokens: List[str], new_tokens: List[str]) -> Tuple[float, List[str]]:
+    """Compute LM log-probability and new context for a sequence of target tokens."""
+    curr_context = list(context_tokens)
+    score = 0.0
+    for token in new_tokens:
+        prob = lm.get_prob(tuple(curr_context), token)
+        score += safe_log(prob)
+        curr_context.append(token)
+        if len(curr_context) >= lm.order:
+            curr_context = curr_context[-(lm.order - 1):]
+    return score, curr_context
+
+
+class Hypothesis:
+    """A search hypothesis representing a partial translation."""
+
+    def __init__(self, src_index: int, tgt_tokens: List[str], score: float, lm_context: List[str]):
+        self.src_index = src_index
+        self.tgt_tokens = tgt_tokens
+        self.score = score
+        self.lm_context = lm_context
+
+
 def beam_search_decode(
-    model,
-    src: torch.Tensor,
-    src_mask: torch.Tensor,
+    src_pieces: List[str],
+    model: Any,
     beam_size: int = 4,
-    max_len: int = 128,
-    length_penalty: float = 0.6,
-    repetition_penalty: float = 1.0,
-    device: torch.device = None,
-) -> torch.Tensor:
-    """Beam search decoding with length normalization.
+    max_decode_len: int = 64,
+) -> List[str]:
+    """Perform monotonic phrase-based stack decoding.
 
-    Maintains `beam_size` hypotheses at each step and selects the
-    best complete sequence based on normalized log-probability.
+    Translates the source sentence from left to right.
 
     Args:
-        model: Trained Transformer model.
-        src: Source token IDs [1, src_len].
-        src_mask: Source padding mask [1, 1, 1, src_len].
-        beam_size: Number of beams to maintain.
-        max_len: Maximum number of tokens to generate.
-        length_penalty: Alpha for length normalization (0 = no penalty).
-        repetition_penalty: Repetition penalty (1.0 = no penalty, >1.0 penalizes already generated tokens).
-        device: Device to run on.
+        src_pieces: List of source sentence piece tokens.
+        model: Trained SMTModel.
+        beam_size: Number of hypotheses to keep per stack.
+        max_decode_len: Max target sequence length limit.
 
     Returns:
-        Best generated token IDs [1, generated_len].
+        List of target sentence piece tokens.
     """
-    if device is None:
-        device = src.device
+    I = len(src_pieces)
+    if I == 0:
+        return []
 
-    model.eval()
+    # Initialize stacks: stacks[i] holds hypotheses that have translated i source tokens
+    stacks: Dict[int, List[Hypothesis]] = {i: [] for i in range(I + 1)}
 
-    # Encode source once
-    encoder_output = model.encode(src, src_mask)  # [1, src_len, d_model]
+    # Initial hypothesis
+    initial_lm_context = ["<s>"] * (model.language_model.order - 1)
+    stacks[0].append(Hypothesis(
+        src_index=0,
+        tgt_tokens=[],
+        score=0.0,
+        lm_context=initial_lm_context
+    ))
 
-    # Expand for beam search: [beam_size, src_len, d_model]
-    encoder_output = encoder_output.repeat(beam_size, 1, 1)
-    src_mask_expanded = src_mask.repeat(beam_size, 1, 1, 1)
+    weights = model.weights
 
-    # Initialize beams: each beam starts with [BOS]
-    # beams: list of (sequence, cumulative_log_prob)
-    beams = [(torch.tensor([[BOS_ID]], dtype=torch.long, device=device), 0.0)]
-    completed = []
+    # Iterate through all stacks
+    for i in range(I):
+        if not stacks[i]:
+            continue
 
-    for step in range(max_len - 1):
-        all_candidates = []
+        # Prune stack i to only keep top beam_size hypotheses
+        stacks[i].sort(key=lambda x: x.score, reverse=True)
+        stacks[i] = stacks[i][:beam_size]
 
-        for seq, score in beams:
-            # If this beam already ended with EOS, move to completed
-            if seq[0, -1].item() == EOS_ID:
-                completed.append((seq, score))
-                continue
+        for hyp in stacks[i]:
+            # Try to extract phrases of length L starting at src_index i
+            for L in range(1, min(model.phrase_table.max_phrase_len, I - i) + 1):
+                src_phrase = tuple(src_pieces[i : i + L])
+                next_src_index = i + L
 
-            # Create target mask
-            tgt_mask = create_causal_mask(seq.size(1)).to(device)
+                # Retrieve candidate translations from phrase table
+                candidates = model.phrase_table.get_translations(src_phrase)
 
-            # Decode (use first beam's encoder output since they're all the same)
-            decoder_output = model.decode(
-                seq,
-                encoder_output[:1],  # [1, src_len, d_model]
-                src_mask,
-                tgt_mask,
-            )
+                # Fallback / Out-of-Vocabulary:
+                # If length L = 1 and we have no translation, we treat it as pass-through (OOV)
+                if L == 1 and not candidates:
+                    # Pass-through: translate as itself
+                    oov_word = src_pieces[i]
+                    tgt_phrase = (oov_word,)
+                    
+                    lm_score, next_lm_context = get_lm_score(
+                        model.language_model,
+                        hyp.lm_context,
+                        list(tgt_phrase)
+                    )
+                    
+                    # Compute log-linear score for OOV option
+                    oov_score = (
+                        weights.get("p_tgt_src", 1.0) * safe_log(1e-12) +
+                        weights.get("p_src_tgt", 1.0) * safe_log(1e-12) +
+                        weights.get("lex_tgt_src", 0.5) * safe_log(1e-12) +
+                        weights.get("lex_src_tgt", 0.5) * safe_log(1e-12) +
+                        weights.get("lm", 1.0) * lm_score +
+                        weights.get("phrase_penalty", -0.5) * 1.0 +
+                        weights.get("word_penalty", -0.5) * 1.0
+                    )
+                    
+                    new_hyp = Hypothesis(
+                        src_index=next_src_index,
+                        tgt_tokens=hyp.tgt_tokens + list(tgt_phrase),
+                        score=hyp.score + oov_score,
+                        lm_context=next_lm_context
+                    )
+                    stacks[next_src_index].append(new_hyp)
+                    continue
 
-            # Get log probabilities for the last position
-            logits = model.output_projection(decoder_output[:, -1, :])  # [1, vocab_size]
+                for tgt_phrase, scores in candidates:
+                    # Check maximum length constraint
+                    if len(hyp.tgt_tokens) + len(tgt_phrase) > max_decode_len:
+                        continue
 
-            # Apply repetition penalty
-            if repetition_penalty != 1.0:
-                for token in set(seq[0].tolist()):
-                    if token not in (PAD_ID, BOS_ID, EOS_ID):
-                        val = logits[0, token].item()
-                        if val > 0:
-                            logits[0, token] /= repetition_penalty
-                        else:
-                            logits[0, token] *= repetition_penalty
+                    # LM score for this phrase
+                    lm_score, next_lm_context = get_lm_score(
+                        model.language_model,
+                        hyp.lm_context,
+                        list(tgt_phrase)
+                    )
 
-            log_probs = F.log_softmax(logits, dim=-1)  # [1, vocab_size]
+                    # Compute features
+                    p_tgt_src = scores.get("p_tgt_src", 1e-12)
+                    p_src_tgt = scores.get("p_src_tgt", 1e-12)
+                    lex_tgt_src = scores.get("lex_tgt_src", 1e-12)
+                    lex_src_tgt = scores.get("lex_src_tgt", 1e-12)
 
-            # Get top-k candidates
-            top_log_probs, top_ids = log_probs.topk(beam_size, dim=-1)  # [1, beam_size]
+                    step_score = (
+                        weights.get("p_tgt_src", 1.0) * safe_log(p_tgt_src) +
+                        weights.get("p_src_tgt", 1.0) * safe_log(p_src_tgt) +
+                        weights.get("lex_tgt_src", 0.5) * safe_log(lex_tgt_src) +
+                        weights.get("lex_src_tgt", 0.5) * safe_log(lex_src_tgt) +
+                        weights.get("lm", 1.0) * lm_score +
+                        weights.get("phrase_penalty", -0.5) * 1.0 +
+                        weights.get("word_penalty", -0.5) * len(tgt_phrase)
+                    )
 
-            for i in range(beam_size):
-                token_id = top_ids[0, i].unsqueeze(0).unsqueeze(0)  # [1, 1]
-                token_score = top_log_probs[0, i].item()
+                    new_hyp = Hypothesis(
+                        src_index=next_src_index,
+                        tgt_tokens=hyp.tgt_tokens + list(tgt_phrase),
+                        score=hyp.score + step_score,
+                        lm_context=next_lm_context
+                    )
+                    stacks[next_src_index].append(new_hyp)
 
-                new_seq = torch.cat([seq, token_id], dim=1)
-                new_score = score + token_score
+    # Sort final stack and get the best hypothesis
+    final_stack = stacks[I]
+    if not final_stack:
+        # Fallback: if we somehow failed to reach the end, return the best partial translation
+        all_hyps = []
+        for i in range(I + 1):
+            all_hyps.extend(stacks[i])
+        if not all_hyps:
+            return []
+        all_hyps.sort(key=lambda x: x.score, reverse=True)
+        return all_hyps[0].tgt_tokens
 
-                all_candidates.append((new_seq, new_score))
+    final_stack.sort(key=lambda x: x.score, reverse=True)
+    return final_stack[0].tgt_tokens
 
-        if not all_candidates:
-            break
 
-        # Select top beam_size candidates
-        all_candidates.sort(key=lambda x: x[1], reverse=True)
-        beams = all_candidates[:beam_size]
-
-        # Check if all beams are complete
-        if all(seq[0, -1].item() == EOS_ID for seq, _ in beams):
-            completed.extend(beams)
-            break
-
-    # Add remaining beams to completed
-    completed.extend(beams)
-
-    # Apply length normalization and select best
-    def normalize_score(seq, score):
-        length = seq.size(1) - 1  # exclude BOS
-        if length_penalty > 0 and length > 0:
-            return score / (length ** length_penalty)
-        return score
-
-    completed.sort(key=lambda x: normalize_score(x[0], x[1]), reverse=True)
-
-    return completed[0][0] if completed else beams[0][0]
+def greedy_decode(
+    model: Any,
+    src_pieces: List[str],
+    max_len: int = 64,
+) -> List[str]:
+    """Greedy decoding: a special case of beam search with beam_size = 1."""
+    return beam_search_decode(
+        src_pieces=src_pieces,
+        model=model,
+        beam_size=1,
+        max_decode_len=max_len,
+    )

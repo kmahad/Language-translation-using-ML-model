@@ -25,7 +25,11 @@ from src.config import get_config_from_args
 from src.data.preprocessing import load_and_split_data
 from src.data.tokenizer import load_tokenizers
 from src.data.dataset import create_dataloaders
-from src.model import Transformer
+from src.config import get_config_from_args
+from src.data.preprocessing import load_and_split_data
+from src.data.tokenizer import load_tokenizers
+from src.data.dataset import create_dataloaders
+from src.model import SMTModel
 from src.training import Trainer
 from src.utils.helpers import set_seed, get_device, count_parameters, format_number
 from src.utils.logging_utils import setup_logger
@@ -49,7 +53,7 @@ def main():
     device = get_device()
 
     logger.info("=" * 60)
-    logger.info("TRANSFORMER TRANSLATION - TRAINING")
+    logger.info("SMT TRANSLATION - TRAINING")
     logger.info("=" * 60)
     logger.info(f"Languages: {config.data.src_lang} -> {config.data.tgt_lang}")
     logger.info(f"Device: {device}")
@@ -78,15 +82,11 @@ def main():
 
     # Build model
     logger.info("Building model...")
-    model = Transformer.from_config(config, src_vocab_size, tgt_vocab_size)
-    model = model.to(device)
-
-    num_params = count_parameters(model)
-    logger.info(f"Model parameters: {format_number(num_params)} ({num_params:,})")
-    logger.info(f"Architecture: d_model={config.model.d_model}, "
-                f"heads={config.model.n_heads}, "
-                f"enc_layers={config.model.n_encoder_layers}, "
-                f"dec_layers={config.model.n_decoder_layers}")
+    model = SMTModel(
+        max_phrase_len=config.model.max_phrase_len,
+        lm_order=config.model.lm_order,
+        alignment_iterations=config.model.alignment_iterations,
+    )
 
     # Create trainer
     trainer = Trainer(
@@ -106,13 +106,17 @@ def main():
     logger.info("\nStarting training...")
     results = trainer.train()
 
+    # Model parameter stats (number of translation rules)
+    num_params = count_parameters(model)
+    logger.info(f"Model phrase rules: {format_number(num_params)} ({num_params:,})")
+
     # Print summary
     logger.info("\n" + "=" * 60)
     logger.info("TRAINING COMPLETE")
     logger.info("=" * 60)
-    logger.info(f"Best validation loss: {results['best_val_loss']:.4f}")
+    logger.info(f"Best validation BLEU: {results['best_val_bleu']:.2f}")
     logger.info(f"Total time: {results['total_time']}")
-    logger.info(f"Checkpoint saved to: {config.training.checkpoint_dir}/best.pt")
+    logger.info(f"Checkpoint saved to: {config.training.checkpoint_dir}/best.json")
     logger.info("Next: python scripts/test.py --config config/default.yaml")
     logger.info("=" * 60)
 

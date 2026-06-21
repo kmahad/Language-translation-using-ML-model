@@ -40,40 +40,31 @@ class TokenizerConfig:
 
 @dataclass
 class ModelConfig:
-    """Transformer architecture configuration."""
-    d_model: int = 512
-    n_heads: int = 8
-    n_encoder_layers: int = 6
-    n_decoder_layers: int = 6
-    d_ff: int = 2048
-    dropout: float = 0.1
-    weight_tying: bool = True
+    """Statistical Machine Translation model configuration."""
+    max_phrase_len: int = 5
+    lm_order: int = 3
+    alignment_iterations: int = 10
 
 
 @dataclass
 class TrainingConfig:
-    """Training loop configuration."""
+    """Training / weight-tuning configuration."""
+    epochs: int = 10
     batch_size: int = 64
-    epochs: int = 30
-    learning_rate: float = 0.0001
-    warmup_steps: int = 4000
-    label_smoothing: float = 0.1
-    grad_clip: float = 1.0
-    checkpoint_every: int = 5
-    early_stopping_patience: int = 5
+    num_workers: int = 0
     checkpoint_dir: str = "checkpoints"
     seed: int = 42
-    num_workers: int = 2
+    early_stopping_patience: int = 5
+    checkpoint_every: int = 5
     smoke_test: bool = False
+
 
 
 @dataclass
 class InferenceConfig:
     """Inference / decoding configuration."""
     beam_size: int = 4
-    max_decode_len: int = 128
-    length_penalty: float = 0.6
-    repetition_penalty: float = 1.0
+    max_decode_len: int = 64
 
 
 @dataclass
@@ -125,7 +116,7 @@ class TranslationConfig:
         return config
 
     def apply_overrides(self, overrides: dict) -> None:
-        """Apply flat key overrides like {'epochs': 50, 'batch_size': 32}.
+        """Apply flat key overrides like {'epochs': 50, 'beam_size': 4}.
 
         Searches all sub-configs for matching attribute names.
         """
@@ -154,7 +145,7 @@ def get_config_from_args() -> TranslationConfig:
     """Parse CLI arguments and return a TranslationConfig.
 
     Usage:
-        python scripts/train.py --config config/default.yaml --epochs 50
+        python scripts/train.py --config config/default.yaml --epochs 10
     """
     parser = argparse.ArgumentParser(description="Translation Config")
     parser.add_argument("--config", type=str, default="config/default.yaml",
@@ -162,11 +153,9 @@ def get_config_from_args() -> TranslationConfig:
 
     # Allow flat overrides for any config key
     parser.add_argument("--epochs", type=int, default=None)
-    parser.add_argument("--batch_size", type=int, default=None)
-    parser.add_argument("--learning_rate", type=float, default=None)
-    parser.add_argument("--d_model", type=int, default=None)
-    parser.add_argument("--n_heads", type=int, default=None)
-    parser.add_argument("--dropout", type=float, default=None)
+    parser.add_argument("--max_phrase_len", type=int, default=None)
+    parser.add_argument("--lm_order", type=int, default=None)
+    parser.add_argument("--alignment_iterations", type=int, default=None)
     parser.add_argument("--max_seq_len", type=int, default=None)
     parser.add_argument("--vocab_size", type=int, default=None)
     parser.add_argument("--beam_size", type=int, default=None)

@@ -1,5 +1,5 @@
 """
-Full test-set evaluator.
+Full test-set evaluator for SMT model.
 
 Runs inference on all test examples, computes BLEU scores,
 saves translations side-by-side, and prints sample outputs.
@@ -7,49 +7,40 @@ saves translations side-by-side, and prints sample outputs.
 
 from pathlib import Path
 from typing import List, Optional
-
-import torch
 from tqdm import tqdm
 
-from .inference import greedy_decode, beam_search_decode
 from .metrics import compute_bleu, compute_sentence_bleu
 from ..data.tokenizer import Tokenizer
-from ..data.dataset import create_padding_mask
-from ..model import Transformer
 
 
 class Evaluator:
-    """Evaluate a trained translation model on a test set.
+    """Evaluate a trained SMT translation model on a test set.
 
     Args:
-        model: Trained Transformer model.
+        model: Trained SMTModel.
         src_tokenizer: Source language tokenizer.
         tgt_tokenizer: Target language tokenizer.
-        device: Device to run on.
-        beam_size: Beam size for beam search (1 = greedy).
+        device: Unused (kept for compatibility).
+        beam_size: Beam size for decoding.
         max_decode_len: Maximum decoding length.
-        length_penalty: Length penalty for beam search.
     """
 
     def __init__(
         self,
-        model: Transformer,
+        model,
         src_tokenizer: Tokenizer,
         tgt_tokenizer: Tokenizer,
-        device: torch.device,
+        device=None,
         beam_size: int = 4,
-        max_decode_len: int = 128,
-        length_penalty: float = 0.6,
-        repetition_penalty: float = 1.0,
+        max_decode_len: int = 64,
+        length_penalty: float = 0.6,      # Unused, kept for signature match
+        repetition_penalty: float = 1.0,  # Unused, kept for signature match
     ):
         self.model = model
         self.src_tokenizer = src_tokenizer
         self.tgt_tokenizer = tgt_tokenizer
-        self.device = device
         self.beam_size = beam_size
         self.max_decode_len = max_decode_len
-        self.length_penalty = length_penalty
-        self.repetition_penalty = repetition_penalty
 
     def translate_sentence(self, sentence: str) -> str:
         """Translate a single sentence.
@@ -60,47 +51,13 @@ class Evaluator:
         Returns:
             Translated sentence in the target language.
         """
-        self.model.eval()
-
-        # Tokenize source
-        src_ids = self.src_tokenizer.encode(sentence, add_bos=True, add_eos=True)
-        src_tensor = torch.tensor([src_ids], dtype=torch.long, device=self.device)
-        src_mask = create_padding_mask(src_tensor).to(self.device)
-
-        # Cap decode length by model's target positional encoding size to prevent RuntimeError
-        # Safely unwrap model if wrapped (e.g. DataParallel) and check for positional encoding
-        raw_model = self.model.module if hasattr(self.model, "module") else self.model
-        if hasattr(raw_model, "tgt_embedding") and hasattr(raw_model.tgt_embedding, "positional_encoding"):
-            pe_tensor = getattr(raw_model.tgt_embedding.positional_encoding, "pe", None)
-            if pe_tensor is not None:
-                max_pe_len = pe_tensor.size(1)
-            else:
-                max_pe_len = self.max_decode_len
-        else:
-            max_pe_len = self.max_decode_len
-        max_len = min(self.max_decode_len, max_pe_len)
-
-        # Decode
-        if self.beam_size > 1:
-            output_ids = beam_search_decode(
-                self.model, src_tensor, src_mask,
-                beam_size=self.beam_size,
-                max_len=max_len,
-                length_penalty=self.length_penalty,
-                repetition_penalty=self.repetition_penalty,
-                device=self.device,
-            )
-        else:
-            output_ids = greedy_decode(
-                self.model, src_tensor, src_mask,
-                max_len=max_len,
-                repetition_penalty=self.repetition_penalty,
-                device=self.device,
-            )
-
-        # Decode token IDs back to text
-        translation = self.tgt_tokenizer.decode(output_ids[0].tolist())
-        return translation
+        return self.model.translate(
+            src_text=sentence,
+            src_tokenizer=self.src_tokenizer,
+            tgt_tokenizer=self.tgt_tokenizer,
+            beam_size=self.beam_size,
+            max_decode_len=self.max_decode_len,
+        )
 
     def evaluate(
         self,
@@ -121,7 +78,7 @@ class Evaluator:
             Dictionary with BLEU scores and sample translations.
         """
         print(f"\nEvaluating on {len(src_sentences)} sentences...")
-        print(f"Decoding method: {'Beam Search (k=' + str(self.beam_size) + ')' if self.beam_size > 1 else 'Greedy'}")
+        print(f"Decoding method: Beam Search (k={self.beam_size})")
 
         hypotheses = []
 

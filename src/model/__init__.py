@@ -1,1 +1,1 @@
-from .transformer import Transformer
+from .smt_model import SMTModel

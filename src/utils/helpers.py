@@ -5,7 +5,6 @@ Provides seed setting, device detection, and parameter counting.
 """
 
 import random
-import torch
 import numpy as np
 
 
@@ -13,34 +12,20 @@ def set_seed(seed: int) -> None:
     """Set random seed for reproducibility across all libraries."""
     random.seed(seed)
     np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-        # Deterministic mode (may slow down training slightly)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
 
 
-_device = None
-
-def get_device() -> torch.device:
-    """Detect the best available device (CUDA > CPU)."""
-    global _device
-    if _device is not None:
-        return _device
-    if torch.cuda.is_available():
-        _device = torch.device("cuda")
-        print(f"Using GPU: {torch.cuda.get_device_name(0)}")
-        print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB")
-    else:
-        _device = torch.device("cpu")
-        print("No GPU detected — using CPU (training will be slow)")
-    return _device
+def get_device() -> str:
+    """Return device (no-op, CPU only for SMT)."""
+    return "cpu"
 
 
-def count_parameters(model: torch.nn.Module) -> int:
-    """Count the total number of trainable parameters in a model."""
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+def count_parameters(model) -> int:
+    """Count the total number of translation rules in the SMT phrase table."""
+    total = 0
+    if hasattr(model, "phrase_table") and hasattr(model.phrase_table, "phrase_probs"):
+        for src_phrase, candidates in model.phrase_table.phrase_probs.items():
+            total += len(candidates)
+    return total
 
 
 def format_number(n: int) -> str:
