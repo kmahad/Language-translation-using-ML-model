@@ -30,6 +30,7 @@ def load_parallel_corpus(
     src_column: str = "source",
     tgt_column: str = "target",
     separator: str = ",",
+    max_samples: int = None,
 ) -> Tuple[List[str], List[str]]:
     """Load a parallel corpus from a CSV or TSV file.
 
@@ -38,6 +39,7 @@ def load_parallel_corpus(
         src_column: Column name for source language sentences.
         tgt_column: Column name for target language sentences.
         separator: Column separator ("," for CSV, "\\t" for TSV).
+        max_samples: Maximum number of samples to load.
 
     Returns:
         Tuple of (source_sentences, target_sentences).
@@ -50,7 +52,7 @@ def load_parallel_corpus(
     if separator == "\\t":
         separator = "\t"
 
-    df = pd.read_csv(path, sep=separator, encoding="utf-8", on_bad_lines="skip")
+    df = pd.read_csv(path, sep=separator, encoding="utf-8", on_bad_lines="skip", nrows=max_samples)
 
     if src_column not in df.columns:
         raise ValueError(
@@ -175,6 +177,7 @@ def load_and_split_data(config) -> Tuple[dict, dict]:
         src_column=config.data.src_column,
         tgt_column=config.data.tgt_column,
         separator=config.data.separator,
+        max_samples=getattr(config.data, "max_samples", None),
     )
     print(f"Loaded {len(src)} sentence pairs")
 

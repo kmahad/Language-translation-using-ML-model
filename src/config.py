@@ -26,6 +26,7 @@ class DataConfig:
     val_ratio: float = 0.1
     test_ratio: float = 0.1
     split_seed: int = 42
+    max_samples: Optional[int] = None
 
 
 @dataclass

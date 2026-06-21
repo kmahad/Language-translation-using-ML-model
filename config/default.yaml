@@ -25,6 +25,8 @@ data:
   test_ratio: 0.1
   # Random seed for reproducible splits
   split_seed: 42
+  # Limit sample size to prevent memory/timeout issues on large datasets
+  max_samples: 50000
 
 # --- Tokenizer Settings ---
 tokenizer:
